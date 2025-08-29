@@ -1,9 +1,9 @@
 // --- 1. SETUP ---
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm';
 
-// COLE SUA URL E CHAVE ANON AQUI
-const supabaseUrl = 'COLE_SUA_URL_AQUI';
-const supabaseKey = 'COLE_SUA_CHAVE_ANON_AQUI';
+// 
+const supabaseUrl = 'https://kdaqonbvtjhmizlxqvsf.supabase.co';
+const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtkYXFvbmJ2dGpobWl6bHhxdnNmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY1MDU1NTQsImV4cCI6MjA3MjA4MTU1NH0.11uPyVDLG3gHZN0o5S1V4fjU_Zly5LtJ8m0wUqGEDgk';
 // ---------------------------------
 
 const supabase = createClient(supabaseUrl, supabaseKey );
