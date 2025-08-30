@@ -1,7 +1,7 @@
 // --- 1. SETUP ---
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm';
 
-// COLE SUA URL E CHAVE ANON AQUI (VERIFIQUE SE AINDA ESTÃO CORRETAS )
+// VERIFIQUE SE SUA URL E CHAVE ANON ESTÃO CORRETAS
 const supabaseUrl = 'https://kdaqonbvtjhmizlxqvsf.supabase.co';
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtkYXFvbmJ2dGpobWl6bHhxdnNmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY1MDU1NTQsImV4cCI6MjA3MjA4MTU1NH0.11uPyVDLG3gHZN0o5S1V4fjU_Zly5LtJ8m0wUqGEDgk'; // CERTIFIQUE-SE DE QUE SUA CHAVE ESTÁ AQUI
 // ---------------------------------
@@ -24,7 +24,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (currentPage === 'resultado.html') setupResultadoPage();
 });
 
-// --- 3. FUNÇÕES DE AUTENTICAÇÃO E DASHBOARD (FASE 1) ---
+// --- 3. FUNÇÕES DE AUTENTICAÇÃO E DASHBOARD (ATUALIZADO FASE 3) ---
 
 async function checkUserLoggedIn() {
     const { data: { user } } = await supabase.auth.getUser();
@@ -59,10 +59,45 @@ function setupLoginPage() {
 
 async function setupDashboardPage() {
     const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-        const { data: profile, error } = await supabase.from('profiles').select('full_name').eq('id', user.id).single();
-        if (profile) document.getElementById('user-name').textContent = profile.full_name;
+    if (!user) return;
+
+    // Carrega nome do usuário
+    const { data: profile } = await supabase.from('profiles').select('full_name').eq('id', user.id).single();
+    if (profile) document.getElementById('user-name').textContent = profile.full_name;
+
+    // NOVO: Mostra o link personalizado do diagnóstico
+    const linkInput = document.getElementById('personal-link');
+    const diagnosticLink = `${window.location.origin}/diagnostico.html?prof_id=${user.id}`;
+    linkInput.value = diagnosticLink;
+    linkInput.addEventListener('click', () => {
+        linkInput.select();
+        navigator.clipboard.writeText(diagnosticLink);
+        showMessage('Link copiado para a área de transferência!', 'success', 'dashboard-message-container');
+    });
+
+    // NOVO: Carrega os diagnósticos do banco de dados
+    const diagnosticsContainer = document.getElementById('diagnostics-list');
+    diagnosticsContainer.innerHTML = '<p>Carregando diagnósticos...</p>';
+    const { data: diagnostics, error } = await supabase.from('diagnostics').select('*').eq('professional_id', user.id).order('created_at', { ascending: false });
+    
+    if (error) {
+        diagnosticsContainer.innerHTML = `<p class="text-red-500">Erro ao carregar diagnósticos.</p>`;
+        return;
     }
+
+    if (!diagnostics || diagnostics.length === 0) {
+        diagnosticsContainer.innerHTML = `<p class="text-gray-500">Nenhum diagnóstico recebido ainda. Compartilhe seu link acima para começar.</p>`;
+        return;
+    }
+
+    let tableHTML = `<table class="w-full text-left mt-4"><thead class="border-b"><tr><th class="py-2">Data</th><th class="py-2">Pontuação</th><th class="py-2">Análise</th></tr></thead><tbody>`;
+    diagnostics.forEach(d => {
+        tableHTML += `<tr class="border-b"><td class="py-3">${new Date(d.created_at).toLocaleDateString('pt-BR')}</td><td class="py-3">${d.score}</td><td class="py-3">${d.analysis}</td></tr>`;
+    });
+    tableHTML += `</tbody></table>`;
+    diagnosticsContainer.innerHTML = tableHTML;
+
+    // Botão de logout
     const logoutButton = document.getElementById('logout-button');
     logoutButton.addEventListener('click', async () => {
         await supabase.auth.signOut();
@@ -70,13 +105,18 @@ async function setupDashboardPage() {
     });
 }
 
-// --- 4. FUNÇÕES DO DIAGNÓSTICO (NOVO - FASE 2) ---
+// --- 4. FUNÇÕES DO DIAGNÓSTICO (ATUALIZADO FASE 3) ---
 
 function setupDiagnosticoPage() {
     const quizContainer = document.getElementById('quiz-container');
-    if (!quizContainer) return;
+    const params = new URLSearchParams(window.location.search);
+    const professionalId = params.get('prof_id');
 
-    // Para esta fase, o questionário é fixo. No futuro, ele virá do banco de dados.
+    if (!professionalId) {
+        quizContainer.innerHTML = `<h1 class="text-3xl font-bold text-center text-red-500">Erro: Link Inválido</h1><p class="text-center mt-4">Este link de diagnóstico não é válido. Por favor, verifique o link com seu terapeuta.</p>`;
+        return;
+    }
+
     const questions = [
         { id: 1, text: "Com que frequência vocês expressam apreço um pelo outro?", options: [{ text: "Diariamente", value: 3 }, { text: "Algumas vezes na semana", value: 2 }, { text: "Raramente", value: 1 }] },
         { id: 2, text: "Como vocês lidam com desacordos ou conflitos?", options: [{ text: "Conversamos calmamente", value: 3 }, { text: "Discutimos, mas nos resolvemos", value: 2 }, { text: "Evitamos o conflito", value: 1 }] },
@@ -84,6 +124,7 @@ function setupDiagnosticoPage() {
     ];
 
     let formHTML = '<form id="quiz-form">';
+    formHTML += `<h1 class="text-3xl font-bold text-center text-gray-800 mb-2">Diagnóstico de Relacionamento</h1><p class="text-center text-gray-600 mb-8">Suas respostas são confidenciais.</p>`;
     questions.forEach((q, index) => {
         formHTML += `<div class="mb-8"><p class="text-lg font-semibold text-gray-700 mb-4">${index + 1}. ${q.text}</p><div class="space-y-3">`;
         q.options.forEach(opt => {
@@ -103,28 +144,39 @@ function setupDiagnosticoPage() {
             totalScore += parseInt(value);
         }
 
-        // Simplesmente salva o resultado no navegador para a próxima página
-        localStorage.setItem('theralinkScore', totalScore);
+        let analysis = "Sinais de Alerta Importantes";
+        if (totalScore > 7) analysis = "Fundação Sólida";
+        else if (totalScore > 4) analysis = "Áreas para Atenção";
+
+        // NOVO: Salva o resultado no banco de dados, associado ao ID do profissional
+        const { error } = await supabase.from('diagnostics').insert({
+            score: totalScore,
+            analysis: analysis,
+            professional_id: professionalId
+        });
+
+        if (error) {
+            // Se falhar, ainda leva para a página de resultado, mas mostra um erro no console
+            console.error("Erro ao salvar diagnóstico:", error);
+        }
+
+        localStorage.setItem('theralinkResult', JSON.stringify({ score: totalScore, analysis: analysis }));
         window.location.href = 'resultado.html';
     });
 }
 
 function setupResultadoPage() {
     const container = document.getElementById('resultado-container');
-    const score = localStorage.getItem('theralinkScore');
+    const result = JSON.parse(localStorage.getItem('theralinkResult'));
 
-    if (score === null) {
-        container.innerHTML = `<h2>Erro: Resultado não encontrado.</h2><p><a href="diagnostico.html" class="text-blue-500">Por favor, realize o diagnóstico primeiro.</a></p>`;
+    if (!result) {
+        container.innerHTML = `<h2>Erro: Resultado não encontrado.</h2><p><a href="index.html" class="text-blue-500">Voltar ao início.</a></p>`;
         return;
     }
 
-    let analysis = "Sinais de Alerta Importantes";
-    if (score > 7) analysis = "Fundação Sólida";
-    else if (score > 4) analysis = "Áreas para Atenção";
-
     container.innerHTML = `
-        <h2 class="text-3xl font-bold text-blue-600 mb-4">${analysis}</h2>
-        <p class="text-gray-700 text-lg mb-8">Sua pontuação indica áreas que podem ser exploradas para fortalecer ainda mais sua conexão.</p>
+        <h2 class="text-3xl font-bold text-blue-600 mb-4">${result.analysis}</h2>
+        <p class="text-gray-700 text-lg mb-8">Sua pontuação foi: ${result.score}. Este resultado é um ponto de partida para uma conversa mais profunda.</p>
         <div class="mt-10 p-6 bg-green-50 rounded-lg">
             <h3 class="text-2xl font-bold text-gray-800 mb-3">Dê o Próximo Passo</h3>
             <p class="text-gray-600 mb-6">A terapia é uma jornada de autoconhecimento e crescimento. Estou aqui para guiar vocês.</p>
@@ -133,13 +185,14 @@ function setupResultadoPage() {
             </a>
         </div>
     `;
-    localStorage.removeItem('theralinkScore' );
+    localStorage.removeItem('theralinkResult' );
 }
 
 // --- 5. FUNÇÃO UTILITÁRIA ---
-function showMessage(message, type = 'success') {
-    const container = document.getElementById('message-container');
+function showMessage(message, type = 'success', containerId = 'message-container') {
+    const container = document.getElementById(containerId);
     if (!container) return;
     const color = type === 'success' ? 'green' : 'red';
     container.innerHTML = `<p class="text-${color}-500 text-center">${message}</p>`;
+    setTimeout(() => { container.innerHTML = '' }, 3000);
 }
