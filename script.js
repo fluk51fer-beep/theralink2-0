@@ -100,7 +100,7 @@ async function setupDiagnosticoPage() {
 
     if (!professionalId) return quizContainer.innerHTML = `<h1 class="text-3xl font-bold text-center text-red-500">Erro: Link Inválido</h1>`;
 
-    // CORREÇÃO: Agora também buscamos o link de agendamento junto com o questionário
+    // CORREÇÃO: A busca foi reestruturada para a sintaxe correta
     const { data: profData, error } = await supabase
         .from('profiles')
         .select(`
@@ -116,7 +116,9 @@ async function setupDiagnosticoPage() {
         .eq('id', professionalId)
         .single();
 
-    if (error || !profData || profData.questionnaires.length === 0) {
+    // A lógica de verificação de erro foi melhorada
+    if (error || !profData || !profData.questionnaires || profData.questionnaires.length === 0) {
+        console.error('Erro ao buscar questionário:', error);
         return quizContainer.innerHTML = `<h1 class="text-3xl font-bold text-center text-red-500">Erro: Questionário não encontrado.</h1>`;
     }
     
@@ -147,11 +149,10 @@ async function setupDiagnosticoPage() {
 
         await supabase.from('diagnostics').insert({ score: totalScore, analysis: analysis, professional_id: professionalId });
         
-        // CORREÇÃO: Passamos o link correto que buscamos do perfil do profissional
         localStorage.setItem('theralinkResult', JSON.stringify({ 
             score: totalScore, 
             analysis: analysis, 
-            schedulingLink: schedulingLink || 'https://wa.me/' // Um link padrão caso esteja vazio
+            schedulingLink: schedulingLink || 'https://wa.me/'
         } ));
         window.location.href = 'resultado.html';
     });
