@@ -8,12 +8,8 @@ const supabase = createClient(supabaseUrl, supabaseKey );
 // --- 2. LÓGICA PRINCIPAL ---
 document.addEventListener('DOMContentLoaded', () => {
     const currentPage = window.location.pathname.split('/').pop() || 'index.html';
-
     const protectedPages = ['dashboard.html', 'configuracao.html', 'perfil.html'];
-    if (protectedPages.includes(currentPage)) {
-        checkUserLoggedIn();
-    }
-
+    if (protectedPages.includes(currentPage)) checkUserLoggedIn();
     if (currentPage === 'cadastro.html') setupCadastroPage();
     if (currentPage === 'login.html') setupLoginPage();
     if (currentPage === 'dashboard.html') setupDashboardPage();
@@ -23,7 +19,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (currentPage === 'perfil.html') setupPerfilPage();
 });
 
-// --- 3. FUNÇÕES DE AUTENTICAÇÃO E DASHBOARD ---
+// --- 3. FUNÇÕES DE AUTENTICAÇÃO (SIMPLIFICADO) ---
 
 async function checkUserLoggedIn() {
     const { data: { user } } = await supabase.auth.getUser();
@@ -35,11 +31,20 @@ function setupCadastroPage() {
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
         const { name, email, password } = Object.fromEntries(new FormData(e.target));
-        const { data: authData, error: authError } = await supabase.auth.signUp({ email, password });
-        if (authError) return showMessage(authError.message, 'error');
-        const { error: profileError } = await supabase.from('profiles').insert({ id: authData.user.id, full_name: name, email: email });
-        if (profileError) return showMessage(profileError.message, 'error');
-        showMessage('Cadastro realizado com sucesso! Redirecionando...', 'success');
+        
+        // CORREÇÃO: Agora passamos o nome nos 'options' para o gatilho usar.
+        const { error } = await supabase.auth.signUp({ 
+            email, 
+            password,
+            options: {
+                data: {
+                    full_name: name
+                }
+            }
+        });
+
+        if (error) return showMessage(error.message, 'error');
+        showMessage('Cadastro realizado com sucesso! Redirecionando para o login...', 'success');
         setTimeout(() => window.location.replace('login.html'), 2000);
     });
 }
@@ -98,9 +103,7 @@ async function setupDiagnosticoPage() {
     const params = new URLSearchParams(window.location.search);
     const professionalId = params.get('prof_id');
 
-    if (!professionalId) {
-        return quizContainer.innerHTML = `<h1 class="text-3xl font-bold text-center text-red-500">Erro: Link Inválido</h1>`;
-    }
+    if (!professionalId) return quizContainer.innerHTML = `<h1 class="text-3xl font-bold text-center text-red-500">Erro: Link Inválido</h1>`;
 
     const { data: profile, error: profileError } = await supabase.from('profiles').select('scheduling_link').eq('id', professionalId).single();
     if (profileError) return quizContainer.innerHTML = `<h1 class="text-3xl font-bold text-center text-red-500">Erro: Profissional não encontrado.</h1>`;
@@ -159,7 +162,7 @@ function setupResultadoPage() {
     localStorage.removeItem('theralinkResult');
 }
 
-// --- 5. FUNÇÕES DE CONFIGURAÇÃO (LÓGICA DE NOVO USUÁRIO CORRIGIDA) ---
+// --- 5. FUNÇÕES DE CONFIGURAÇÃO ---
 
 async function setupConfiguracaoPage() {
     const container = document.getElementById('config-container');
@@ -168,25 +171,17 @@ async function setupConfiguracaoPage() {
 
     let { data: questionnaire, error } = await supabase.from('questionnaires').select('*, questions(*, options(*))').eq('professional_id', user.id).single();
 
-    // CORREÇÃO: A lógica para um novo usuário foi tornada mais robusta.
-    if (error && error.code === 'PGRST116') { // Código para "nenhum resultado encontrado"
+    if (error && error.code === 'PGRST116') {
         showMessage('Bem-vindo! Criando um questionário padrão para você começar...', 'success');
-        
-        // A função agora espera (await) a criação ser concluída.
         const newQuestionnaire = await createDefaultQuestionnaire(user.id);
-        
         if (newQuestionnaire) {
-            // Se a criação foi bem-sucedida, renderiza a página com os novos dados.
             renderConfigurator(container, newQuestionnaire);
         } else {
-            // Se a criação falhou, mostra uma mensagem de erro clara.
             container.innerHTML = `<p class="text-red-500">Erro fatal ao criar o questionário padrão. Por favor, contate o suporte.</p>`;
         }
     } else if (error) {
-        // Erro genérico ao buscar os dados
         container.innerHTML = `<p class="text-red-500">Erro ao carregar seus dados: ${error.message}</p>`;
     } else {
-        // Se encontrou um questionário, renderiza normalmente.
         renderConfigurator(container, questionnaire);
     }
 }
@@ -196,24 +191,19 @@ async function createDefaultQuestionnaire(userId) {
         const { data: newQ, error: qError } = await supabase.from('questionnaires').insert({ title: 'Diagnóstico de Relacionamento Padrão', professional_id: userId }).select().single();
         if (qError) throw qError;
 
-        const { data: newP, error: pError } = await supabase.from('questions').insert({ questionnaire_id: newQ.id, text: 'Como você avalia a comunicação no relacionamento?', position: 1 }).select().single();
+        const { data: newP, error: pError } = await supabase.from('questions').insert({ questionnaire_id: newQ.id, text: 'Como você avalia a comunicação?', position: 1 }).select().single();
         if (pError) throw pError;
 
-        const { error: oError } = await supabase.from('options').insert([
-            { question_id: newP.id, text: 'Excelente', value: 3 },
-            { question_id: newP.id, text: 'Boa', value: 2 },
-            { question_id: newP.id, text: 'Pode melhorar', value: 1 }
-        ]);
+        const { error: oError } = await supabase.from('options').insert([{ question_id: newP.id, text: 'Excelente', value: 3 }, { question_id: newP.id, text: 'Boa', value: 2 }]);
         if (oError) throw oError;
         
-        // Recarrega todos os dados para garantir que a interface tenha a informação completa.
         const { data: reloadedQ, error: reloadError } = await supabase.from('questionnaires').select('*, questions(*, options(*))').eq('id', newQ.id).single();
         if (reloadError) throw reloadError;
 
         return reloadedQ;
     } catch (error) {
         console.error("Erro detalhado ao criar questionário padrão:", error);
-        return null; // Retorna nulo em caso de qualquer falha no processo.
+        return null;
     }
 }
 
