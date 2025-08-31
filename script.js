@@ -91,39 +91,44 @@ async function setupDashboardPage() {
     });
 }
 
-// --- 4. FUNÇÕES DO DIAGNÓSTICO (LÓGICA CORRIGIDA) ---
+// --- 4. FUNÇÕES DO DIAGNÓSTICO (VERSÃO FINAL E ESTÁVEL) ---
 
 async function setupDiagnosticoPage() {
     const quizContainer = document.getElementById('quiz-container');
     const params = new URLSearchParams(window.location.search);
     const professionalId = params.get('prof_id');
 
-    if (!professionalId) return quizContainer.innerHTML = `<h1 class="text-3xl font-bold text-center text-red-500">Erro: Link Inválido</h1>`;
+    if (!professionalId) {
+        return quizContainer.innerHTML = `<h1 class="text-3xl font-bold text-center text-red-500">Erro: Link Inválido</h1>`;
+    }
 
-    // CORREÇÃO: A busca foi reestruturada para a sintaxe correta
-    const { data: profData, error } = await supabase
+    // CORREÇÃO FINAL: A busca foi separada em duas etapas para robustez.
+    // 1. Busca o perfil do profissional para obter o link de agendamento.
+    const { data: profile, error: profileError } = await supabase
         .from('profiles')
-        .select(`
-            scheduling_link,
-            questionnaires (
-                *,
-                questions (
-                    *,
-                    options (*)
-                )
-            )
-        `)
+        .select('scheduling_link')
         .eq('id', professionalId)
         .single();
 
-    // A lógica de verificação de erro foi melhorada
-    if (error || !profData || !profData.questionnaires || profData.questionnaires.length === 0) {
-        console.error('Erro ao buscar questionário:', error);
+    if (profileError) {
+        console.error('Erro ao buscar perfil:', profileError);
+        return quizContainer.innerHTML = `<h1 class="text-3xl font-bold text-center text-red-500">Erro: Profissional não encontrado.</h1>`;
+    }
+
+    // 2. Busca o questionário associado a esse profissional.
+    const { data: questionnaire, error: questionnaireError } = await supabase
+        .from('questionnaires')
+        .select('*, questions(*, options(*))')
+        .eq('professional_id', professionalId)
+        .single();
+
+    if (questionnaireError || !questionnaire) {
+        console.error('Erro ao buscar questionário:', questionnaireError);
         return quizContainer.innerHTML = `<h1 class="text-3xl font-bold text-center text-red-500">Erro: Questionário não encontrado.</h1>`;
     }
     
-    const qData = profData.questionnaires[0];
-    const schedulingLink = profData.scheduling_link;
+    const qData = questionnaire;
+    const schedulingLink = profile.scheduling_link;
 
     let formHTML = `<form id="quiz-form">`;
     formHTML += `<h1 class="text-3xl font-bold text-center text-gray-800 mb-2">${qData.title}</h1><p class="text-center text-gray-600 mb-8">Suas respostas são confidenciais.</p>`;
