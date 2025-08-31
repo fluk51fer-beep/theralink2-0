@@ -20,7 +20,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (currentPage === 'diagnostico.html') setupDiagnosticoPage();
     if (currentPage === 'resultado.html') setupResultadoPage();
     if (currentPage === 'configuracao.html') setupConfiguracaoPage();
-    if (currentPage === 'perfil.html') setupPerfilPage(); // NOVO
+    if (currentPage === 'perfil.html') setupPerfilPage();
 });
 
 // --- 3. FUNÇÕES DE AUTENTICAÇÃO E DASHBOARD ---
@@ -91,7 +91,7 @@ async function setupDashboardPage() {
     });
 }
 
-// --- 4. FUNÇÕES DO DIAGNÓSTICO (ATUALIZADO) ---
+// --- 4. FUNÇÕES DO DIAGNÓSTICO (LÓGICA CORRIGIDA) ---
 
 async function setupDiagnosticoPage() {
     const quizContainer = document.getElementById('quiz-container');
@@ -100,8 +100,28 @@ async function setupDiagnosticoPage() {
 
     if (!professionalId) return quizContainer.innerHTML = `<h1 class="text-3xl font-bold text-center text-red-500">Erro: Link Inválido</h1>`;
 
-    const { data: qData, error } = await supabase.from('questionnaires').select('*, questions(*, options(*))').eq('professional_id', professionalId).single();
-    if (error || !qData) return quizContainer.innerHTML = `<h1 class="text-3xl font-bold text-center text-red-500">Erro: Questionário não encontrado.</h1>`;
+    // CORREÇÃO: Agora também buscamos o link de agendamento junto com o questionário
+    const { data: profData, error } = await supabase
+        .from('profiles')
+        .select(`
+            scheduling_link,
+            questionnaires (
+                *,
+                questions (
+                    *,
+                    options (*)
+                )
+            )
+        `)
+        .eq('id', professionalId)
+        .single();
+
+    if (error || !profData || profData.questionnaires.length === 0) {
+        return quizContainer.innerHTML = `<h1 class="text-3xl font-bold text-center text-red-500">Erro: Questionário não encontrado.</h1>`;
+    }
+    
+    const qData = profData.questionnaires[0];
+    const schedulingLink = profData.scheduling_link;
 
     let formHTML = `<form id="quiz-form">`;
     formHTML += `<h1 class="text-3xl font-bold text-center text-gray-800 mb-2">${qData.title}</h1><p class="text-center text-gray-600 mb-8">Suas respostas são confidenciais.</p>`;
@@ -127,11 +147,12 @@ async function setupDiagnosticoPage() {
 
         await supabase.from('diagnostics').insert({ score: totalScore, analysis: analysis, professional_id: professionalId });
         
-        // NOVO: Busca o link de agendamento do profissional
-        const { data: profile } = await supabase.from('profiles').select('scheduling_link').eq('id', professionalId).single();
-        const schedulingLink = profile?.scheduling_link || 'https://calendly.com'; // Link padrão caso não haja um
-
-        localStorage.setItem('theralinkResult', JSON.stringify({ score: totalScore, analysis: analysis, schedulingLink: schedulingLink } ));
+        // CORREÇÃO: Passamos o link correto que buscamos do perfil do profissional
+        localStorage.setItem('theralinkResult', JSON.stringify({ 
+            score: totalScore, 
+            analysis: analysis, 
+            schedulingLink: schedulingLink || 'https://wa.me/' // Um link padrão caso esteja vazio
+        } ));
         window.location.href = 'resultado.html';
     });
 }
@@ -223,7 +244,7 @@ function createOptionEl(opt) {
     return el;
 }
 
-// --- 6. FUNÇÃO DE PERFIL (NOVO) ---
+// --- 6. FUNÇÃO DE PERFIL ---
 
 async function setupPerfilPage() {
     const { data: { user } } = await supabase.auth.getUser();
@@ -233,14 +254,12 @@ async function setupPerfilPage() {
     const nameInput = document.getElementById('full_name');
     const linkInput = document.getElementById('scheduling_link');
 
-    // Carrega os dados existentes
     const { data: profile, error } = await supabase.from('profiles').select('full_name, scheduling_link').eq('id', user.id).single();
     if (error) return showMessage('Erro ao carregar perfil.', 'error');
     
     nameInput.value = profile.full_name || '';
     linkInput.value = profile.scheduling_link || '';
 
-    // Salva as alterações
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
         const { error: updateError } = await supabase.from('profiles').update({
