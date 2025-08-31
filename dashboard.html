@@ -10,13 +10,16 @@
     <header class="bg-white shadow-sm">
         <nav class="container mx-auto px-6 py-4 flex justify-between items-center">
             <h1 class="text-2xl font-bold text-gray-800">TheraLink Dashboard</h1>
-            <button id="logout-button" class="bg-red-500 text-white px-4 py-2 rounded-md">Sair</button>
+            <div>
+                <!-- NOVO: Link para a configuração -->
+                <a href="configuracao.html" class="text-white bg-blue-500 px-4 py-2 rounded-md hover:bg-blue-600 mr-4">Gerenciar Questionário</a>
+                <button id="logout-button" class="bg-red-500 text-white px-4 py-2 rounded-md">Sair</button>
+            </div>
         </nav>
     </header>
     <main class="container mx-auto p-6 mt-8">
         <h2 class="text-3xl font-bold">Bem-vindo(a ), <span id="user-name">...</span>!</h2>
         
-        <!-- NOVO: Seção do Link Personalizado -->
         <div class="mt-8 bg-white p-6 rounded-lg shadow">
             <label for="personal-link" class="block text-lg font-semibold text-gray-700">Seu Link de Diagnóstico Pessoal</label>
             <p class="text-sm text-gray-500 mt-1 mb-3">Compartilhe este link com seus pacientes. Clique no campo para copiar.</p>
@@ -24,7 +27,6 @@
             <div id="dashboard-message-container" class="mt-2"></div>
         </div>
 
-        <!-- NOVO: Seção da Lista de Diagnósticos -->
         <div class="mt-8 bg-white p-6 rounded-lg shadow">
             <h3 class="text-2xl font-bold text-gray-800">Diagnósticos Recebidos</h3>
             <div id="diagnostics-list" class="mt-4">
