@@ -12,7 +12,7 @@ const supabase = createClient(supabaseUrl, supabaseKey );
 document.addEventListener('DOMContentLoaded', () => {
     const currentPage = window.location.pathname.split('/').pop() || 'index.html';
 
-    const protectedPages = ['dashboard.html'];
+    const protectedPages = ['dashboard.html', 'configuracao.html'];
     if (protectedPages.includes(currentPage)) {
         checkUserLoggedIn();
     }
@@ -22,9 +22,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if (currentPage === 'dashboard.html') setupDashboardPage();
     if (currentPage === 'diagnostico.html') setupDiagnosticoPage();
     if (currentPage === 'resultado.html') setupResultadoPage();
+    if (currentPage === 'configuracao.html') setupConfiguracaoPage();
 });
 
-// --- 3. FUNÇÕES DE AUTENTICAÇÃO E DASHBOARD (ATUALIZADO FASE 3) ---
+// --- 3. FUNÇÕES DE AUTENTICAÇÃO E DASHBOARD ---
 
 async function checkUserLoggedIn() {
     const { data: { user } } = await supabase.auth.getUser();
@@ -61,34 +62,24 @@ async function setupDashboardPage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    // Carrega nome do usuário
     const { data: profile } = await supabase.from('profiles').select('full_name').eq('id', user.id).single();
     if (profile) document.getElementById('user-name').textContent = profile.full_name;
 
-    // NOVO: Mostra o link personalizado do diagnóstico
     const linkInput = document.getElementById('personal-link');
     const diagnosticLink = `${window.location.origin}/diagnostico.html?prof_id=${user.id}`;
     linkInput.value = diagnosticLink;
     linkInput.addEventListener('click', () => {
         linkInput.select();
         navigator.clipboard.writeText(diagnosticLink);
-        showMessage('Link copiado para a área de transferência!', 'success', 'dashboard-message-container');
+        showMessage('Link copiado!', 'success', 'dashboard-message-container');
     });
 
-    // NOVO: Carrega os diagnósticos do banco de dados
     const diagnosticsContainer = document.getElementById('diagnostics-list');
     diagnosticsContainer.innerHTML = '<p>Carregando diagnósticos...</p>';
     const { data: diagnostics, error } = await supabase.from('diagnostics').select('*').eq('professional_id', user.id).order('created_at', { ascending: false });
     
-    if (error) {
-        diagnosticsContainer.innerHTML = `<p class="text-red-500">Erro ao carregar diagnósticos.</p>`;
-        return;
-    }
-
-    if (!diagnostics || diagnostics.length === 0) {
-        diagnosticsContainer.innerHTML = `<p class="text-gray-500">Nenhum diagnóstico recebido ainda. Compartilhe seu link acima para começar.</p>`;
-        return;
-    }
+    if (error) return diagnosticsContainer.innerHTML = `<p class="text-red-500">Erro ao carregar diagnósticos.</p>`;
+    if (!diagnostics || diagnostics.length === 0) return diagnosticsContainer.innerHTML = `<p class="text-gray-500">Nenhum diagnóstico recebido ainda.</p>`;
 
     let tableHTML = `<table class="w-full text-left mt-4"><thead class="border-b"><tr><th class="py-2">Data</th><th class="py-2">Pontuação</th><th class="py-2">Análise</th></tr></thead><tbody>`;
     diagnostics.forEach(d => {
@@ -97,35 +88,33 @@ async function setupDashboardPage() {
     tableHTML += `</tbody></table>`;
     diagnosticsContainer.innerHTML = tableHTML;
 
-    // Botão de logout
-    const logoutButton = document.getElementById('logout-button');
-    logoutButton.addEventListener('click', async () => {
+    document.getElementById('logout-button').addEventListener('click', async () => {
         await supabase.auth.signOut();
         window.location.replace('login.html');
     });
 }
 
-// --- 4. FUNÇÕES DO DIAGNÓSTICO (ATUALIZADO FASE 3) ---
+// --- 4. FUNÇÕES DO DIAGNÓSTICO (DINÂMICO - FASE 4) ---
 
-function setupDiagnosticoPage() {
+async function setupDiagnosticoPage() {
     const quizContainer = document.getElementById('quiz-container');
     const params = new URLSearchParams(window.location.search);
     const professionalId = params.get('prof_id');
 
     if (!professionalId) {
-        quizContainer.innerHTML = `<h1 class="text-3xl font-bold text-center text-red-500">Erro: Link Inválido</h1><p class="text-center mt-4">Este link de diagnóstico não é válido. Por favor, verifique o link com seu terapeuta.</p>`;
+        quizContainer.innerHTML = `<h1 class="text-3xl font-bold text-center text-red-500">Erro: Link Inválido</h1>`;
         return;
     }
 
-    const questions = [
-        { id: 1, text: "Com que frequência vocês expressam apreço um pelo outro?", options: [{ text: "Diariamente", value: 3 }, { text: "Algumas vezes na semana", value: 2 }, { text: "Raramente", value: 1 }] },
-        { id: 2, text: "Como vocês lidam com desacordos ou conflitos?", options: [{ text: "Conversamos calmamente", value: 3 }, { text: "Discutimos, mas nos resolvemos", value: 2 }, { text: "Evitamos o conflito", value: 1 }] },
-        { id: 3, text: "Vocês compartilham objetivos e sonhos para o futuro?", options: [{ text: "Sim, estamos muito alinhados", value: 3 }, { text: "Temos alguns objetivos em comum", value: 2 }, { text: "Não muito", value: 1 }] }
-    ];
+    const { data: qData, error } = await supabase.from('questionnaires').select('*, questions(*, options(*))').eq('professional_id', professionalId).single();
+    if (error || !qData) {
+        quizContainer.innerHTML = `<h1 class="text-3xl font-bold text-center text-red-500">Erro: Questionário não encontrado.</h1>`;
+        return;
+    }
 
-    let formHTML = '<form id="quiz-form">';
-    formHTML += `<h1 class="text-3xl font-bold text-center text-gray-800 mb-2">Diagnóstico de Relacionamento</h1><p class="text-center text-gray-600 mb-8">Suas respostas são confidenciais.</p>`;
-    questions.forEach((q, index) => {
+    let formHTML = `<form id="quiz-form">`;
+    formHTML += `<h1 class="text-3xl font-bold text-center text-gray-800 mb-2">${qData.title}</h1><p class="text-center text-gray-600 mb-8">Suas respostas são confidenciais.</p>`;
+    qData.questions.sort((a, b) => a.position - b.position).forEach((q, index) => {
         formHTML += `<div class="mb-8"><p class="text-lg font-semibold text-gray-700 mb-4">${index + 1}. ${q.text}</p><div class="space-y-3">`;
         q.options.forEach(opt => {
             formHTML += `<label class="flex items-center p-3 border rounded-lg hover:bg-gray-100 cursor-pointer"><input type="radio" name="q_${q.id}" value="${opt.value}" class="mr-3" required><span>${opt.text}</span></label>`;
@@ -135,31 +124,19 @@ function setupDiagnosticoPage() {
     formHTML += `<button type="submit" class="w-full bg-blue-500 text-white py-3 rounded-lg font-semibold mt-8 text-lg">Ver Meu Diagnóstico</button></form>`;
     quizContainer.innerHTML = formHTML;
 
-    const quizForm = document.getElementById('quiz-form');
-    quizForm.addEventListener('submit', async (e) => {
+    document.getElementById('quiz-form').addEventListener('submit', async (e) => {
         e.preventDefault();
-        const formData = new FormData(quizForm);
+        const formData = new FormData(e.target);
         let totalScore = 0;
         for (let value of formData.values()) {
             totalScore += parseInt(value);
         }
 
-        let analysis = "Sinais de Alerta Importantes";
-        if (totalScore > 7) analysis = "Fundação Sólida";
-        else if (totalScore > 4) analysis = "Áreas para Atenção";
+        let analysis = "Sinais de Alerta Importantes"; // Lógica de análise simplificada
+        if (totalScore > (qData.questions.length * 3 * 0.7)) analysis = "Fundação Sólida";
+        else if (totalScore > (qData.questions.length * 3 * 0.4)) analysis = "Áreas para Atenção";
 
-        // NOVO: Salva o resultado no banco de dados, associado ao ID do profissional
-        const { error } = await supabase.from('diagnostics').insert({
-            score: totalScore,
-            analysis: analysis,
-            professional_id: professionalId
-        });
-
-        if (error) {
-            // Se falhar, ainda leva para a página de resultado, mas mostra um erro no console
-            console.error("Erro ao salvar diagnóstico:", error);
-        }
-
+        await supabase.from('diagnostics').insert({ score: totalScore, analysis: analysis, professional_id: professionalId });
         localStorage.setItem('theralinkResult', JSON.stringify({ score: totalScore, analysis: analysis }));
         window.location.href = 'resultado.html';
     });
@@ -168,27 +145,139 @@ function setupDiagnosticoPage() {
 function setupResultadoPage() {
     const container = document.getElementById('resultado-container');
     const result = JSON.parse(localStorage.getItem('theralinkResult'));
-
     if (!result) {
-        container.innerHTML = `<h2>Erro: Resultado não encontrado.</h2><p><a href="index.html" class="text-blue-500">Voltar ao início.</a></p>`;
+        container.innerHTML = `<h2>Erro: Resultado não encontrado.</h2>`;
         return;
     }
-
     container.innerHTML = `
         <h2 class="text-3xl font-bold text-blue-600 mb-4">${result.analysis}</h2>
-        <p class="text-gray-700 text-lg mb-8">Sua pontuação foi: ${result.score}. Este resultado é um ponto de partida para uma conversa mais profunda.</p>
+        <p class="text-gray-700 text-lg mb-8">Sua pontuação foi: ${result.score}.</p>
         <div class="mt-10 p-6 bg-green-50 rounded-lg">
             <h3 class="text-2xl font-bold text-gray-800 mb-3">Dê o Próximo Passo</h3>
-            <p class="text-gray-600 mb-6">A terapia é uma jornada de autoconhecimento e crescimento. Estou aqui para guiar vocês.</p>
-            <a href="https://calendly.com/fabianolucas/terapia" target="_blank" class="inline-block bg-green-500 text-white px-10 py-4 rounded-full font-semibold text-lg hover:bg-green-600">
-                Agende uma Sessão
-            </a>
-        </div>
-    `;
+            <a href="https://calendly.com/fabianolucas/terapia" target="_blank" class="inline-block bg-green-500 text-white px-10 py-4 rounded-full font-semibold text-lg hover:bg-green-600">Agende uma Sessão</a>
+        </div>`;
     localStorage.removeItem('theralinkResult' );
 }
 
-// --- 5. FUNÇÃO UTILITÁRIA ---
+// --- 5. FUNÇÕES DE CONFIGURAÇÃO (NOVO - FASE 4) ---
+
+async function setupConfiguracaoPage() {
+    const container = document.getElementById('config-container');
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    let { data: questionnaire, error } = await supabase.from('questionnaires').select('*, questions(*, options(*))').eq('professional_id', user.id).single();
+
+    if (error && error.code === 'PGRST116') { // Not found, create a default one
+        showMessage('Nenhum questionário encontrado. Criando um padrão para você...', 'success');
+        questionnaire = await createDefaultQuestionnaire(user.id);
+        if (!questionnaire) {
+            container.innerHTML = `<p class="text-red-500">Erro fatal ao criar questionário padrão. Contate o suporte.</p>`;
+            return;
+        }
+    } else if (error) {
+        container.innerHTML = `<p class="text-red-500">Erro ao carregar dados: ${error.message}</p>`;
+        return;
+    }
+    
+    renderConfigurator(container, questionnaire);
+}
+
+async function createDefaultQuestionnaire(userId) {
+    const { data: newQ, error: qError } = await supabase.from('questionnaires').insert({ title: 'Diagnóstico de Relacionamento Padrão', professional_id: userId }).select().single();
+    if (qError) return null;
+
+    const { data: newP, error: pError } = await supabase.from('questions').insert({ questionnaire_id: newQ.id, text: 'Como você avalia a comunicação no relacionamento?', position: 1 }).select().single();
+    if (pError) return null;
+
+    await supabase.from('options').insert([
+        { question_id: newP.id, text: 'Excelente', value: 3 },
+        { question_id: newP.id, text: 'Boa', value: 2 },
+        { question_id: newP.id, text: 'Pode melhorar', value: 1 }
+    ]);
+    
+    const { data: reloadedQ } = await supabase.from('questionnaires').select('*, questions(*, options(*))').eq('id', newQ.id).single();
+    return reloadedQ;
+}
+
+function renderConfigurator(container, qData) {
+    container.innerHTML = `
+        <div class="mb-6"><label class="block text-lg font-semibold mb-2">Título do Questionário</label><input type="text" id="q-title" value="${qData.title}" class="w-full p-2 border rounded text-xl"></div>
+        <div id="questions-list" class="space-y-6"></div>
+        <button id="add-question-btn" class="mt-8 bg-green-500 text-white px-6 py-2 rounded-lg hover:bg-green-600">Adicionar Pergunta</button>`;
+
+    const qList = document.getElementById('questions-list');
+    qData.questions.sort((a, b) => a.position - b.position).forEach(q => qList.appendChild(createQuestionEl(q)));
+
+    document.getElementById('q-title').addEventListener('blur', async (e) => {
+        await supabase.from('questionnaires').update({ title: e.target.value }).eq('id', qData.id);
+        showMessage('Título salvo!', 'success');
+    });
+
+    document.getElementById('add-question-btn').addEventListener('click', async () => {
+        const { data, error } = await supabase.from('questions').insert({ questionnaire_id: qData.id, text: 'Nova Pergunta', position: qData.questions.length + 1 }).select('*, options(*)').single();
+        if (error) return showMessage('Erro ao adicionar pergunta', 'error');
+        qList.appendChild(createQuestionEl(data));
+        showMessage('Pergunta adicionada!', 'success');
+    });
+}
+
+function createQuestionEl(q) {
+    const el = document.createElement('div');
+    el.className = 'p-6 border rounded-xl bg-gray-50';
+    el.innerHTML = `<div class="flex justify-between items-center mb-4"><input type="text" value="${q.text}" class="w-full p-2 border rounded font-semibold text-lg question-text"><button class="ml-4 text-red-500 delete-question-btn p-2 rounded-full hover:bg-red-100">Excluir</button></div><div class="options-list space-y-2 ml-4 border-l-2 pl-4"></div><button class="mt-3 text-sm text-blue-500 add-option-btn">+ Adicionar Opção</button>`;
+    
+    const optionsList = el.querySelector('.options-list');
+    if (q.options) {
+        q.options.forEach(opt => optionsList.appendChild(createOptionEl(opt)));
+    }
+
+    el.querySelector('.question-text').addEventListener('blur', async (e) => {
+        await supabase.from('questions').update({ text: e.target.value }).eq('id', q.id);
+        showMessage('Pergunta salva!', 'success');
+    });
+
+    el.querySelector('.delete-question-btn').addEventListener('click', async () => {
+        if (confirm('Tem certeza que deseja excluir esta pergunta e todas as suas opções?')) {
+            await supabase.from('questions').delete().eq('id', q.id);
+            el.remove();
+            showMessage('Pergunta excluída!', 'success');
+        }
+    });
+
+    el.querySelector('.add-option-btn').addEventListener('click', async () => {
+        const { data, error } = await supabase.from('options').insert({ question_id: q.id, text: 'Nova Opção', value: 0 }).select().single();
+        if (error) return showMessage('Erro ao adicionar opção', 'error');
+        optionsList.appendChild(createOptionEl(data));
+        showMessage('Opção adicionada!', 'success');
+    });
+    return el;
+}
+
+function createOptionEl(opt) {
+    const el = document.createElement('div');
+    el.className = 'flex items-center';
+    el.innerHTML = `<input type="text" value="${opt.text}" class="w-2/3 p-1 border rounded option-text"><input type="number" value="${opt.value}" class="w-1/4 p-1 border rounded ml-2 option-value"><button class="ml-2 text-gray-400 hover:text-red-600 delete-option-btn p-1 rounded-full">X</button>`;
+    
+    el.querySelector('.option-text').addEventListener('blur', async (e) => {
+        await supabase.from('options').update({ text: e.target.value }).eq('id', opt.id);
+        showMessage('Opção salva!', 'success');
+    });
+
+    el.querySelector('.option-value').addEventListener('blur', async (e) => {
+        await supabase.from('options').update({ value: parseInt(e.target.value) || 0 }).eq('id', opt.id);
+        showMessage('Valor salvo!', 'success');
+    });
+
+    el.querySelector('.delete-option-btn').addEventListener('click', async () => {
+        await supabase.from('options').delete().eq('id', opt.id);
+        el.remove();
+        showMessage('Opção excluída!', 'success');
+    });
+    return el;
+}
+
+// --- 6. FUNÇÃO UTILITÁRIA ---
 function showMessage(message, type = 'success', containerId = 'message-container') {
     const container = document.getElementById(containerId);
     if (!container) return;
