@@ -1,18 +1,15 @@
 // --- 1. SETUP ---
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm';
 
-// VERIFIQUE SE SUA URL E CHAVE ANON ESTÃO CORRETAS
 const supabaseUrl = 'https://kdaqonbvtjhmizlxqvsf.supabase.co';
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtkYXFvbmJ2dGpobWl6bHhxdnNmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY1MDU1NTQsImV4cCI6MjA3MjA4MTU1NH0.11uPyVDLG3gHZN0o5S1V4fjU_Zly5LtJ8m0wUqGEDgk'; // CERTIFIQUE-SE DE QUE SUA CHAVE ESTÁ AQUI
-// ---------------------------------
-
 const supabase = createClient(supabaseUrl, supabaseKey );
 
 // --- 2. LÓGICA PRINCIPAL ---
 document.addEventListener('DOMContentLoaded', () => {
     const currentPage = window.location.pathname.split('/').pop() || 'index.html';
 
-    const protectedPages = ['dashboard.html', 'configuracao.html'];
+    const protectedPages = ['dashboard.html', 'configuracao.html', 'perfil.html'];
     if (protectedPages.includes(currentPage)) {
         checkUserLoggedIn();
     }
@@ -23,9 +20,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if (currentPage === 'diagnostico.html') setupDiagnosticoPage();
     if (currentPage === 'resultado.html') setupResultadoPage();
     if (currentPage === 'configuracao.html') setupConfiguracaoPage();
+    if (currentPage === 'perfil.html') setupPerfilPage(); // NOVO
 });
 
-// --- 3. FUNÇÕES DE AUTENTICAÇÃO E DASHBOARD (DESIGN MELHORADO) ---
+// --- 3. FUNÇÕES DE AUTENTICAÇÃO E DASHBOARD ---
 
 async function checkUserLoggedIn() {
     const { data: { user } } = await supabase.auth.getUser();
@@ -39,11 +37,10 @@ function setupCadastroPage() {
         const { name, email, password } = Object.fromEntries(new FormData(e.target));
         const { data: authData, error: authError } = await supabase.auth.signUp({ email, password });
         if (authError) return showMessage(authError.message, 'error');
-        if (!authData.user) return showMessage('Erro: Usuário não foi criado.', 'error');
         const { error: profileError } = await supabase.from('profiles').insert({ id: authData.user.id, full_name: name, email: email });
         if (profileError) return showMessage(profileError.message, 'error');
-        showMessage('Cadastro realizado com sucesso! Você será redirecionado para o login.', 'success');
-        setTimeout(() => window.location.replace('login.html'), 3000);
+        showMessage('Cadastro realizado com sucesso! Redirecionando...', 'success');
+        setTimeout(() => window.location.replace('login.html'), 2000);
     });
 }
 
@@ -79,7 +76,7 @@ async function setupDashboardPage() {
     const { data: diagnostics, error } = await supabase.from('diagnostics').select('*').eq('professional_id', user.id).order('created_at', { ascending: false });
     
     if (error) return diagnosticsContainer.innerHTML = `<p class="text-red-500">Erro ao carregar diagnósticos.</p>`;
-    if (!diagnostics || diagnostics.length === 0) return diagnosticsContainer.innerHTML = `<div class="text-center py-10 px-6 border-2 border-dashed rounded-lg"><p class="text-gray-500">Nenhum diagnóstico recebido ainda.</p><p class="text-sm text-gray-400 mt-2">Compartilhe seu link para começar.</p></div>`;
+    if (!diagnostics || diagnostics.length === 0) return diagnosticsContainer.innerHTML = `<div class="text-center py-10 px-6 border-2 border-dashed rounded-lg"><p class="text-gray-500">Nenhum diagnóstico recebido ainda.</p></div>`;
 
     let tableHTML = `<div class="overflow-x-auto"><table class="w-full text-left text-sm"><thead class="bg-gray-50 text-gray-600 uppercase tracking-wider"><tr><th class="p-3">Data</th><th class="p-3">Pontuação</th><th class="p-3">Análise</th></tr></thead><tbody class="bg-white divide-y">`;
     diagnostics.forEach(d => {
@@ -94,23 +91,17 @@ async function setupDashboardPage() {
     });
 }
 
-// --- 4. FUNÇÕES DO DIAGNÓSTICO ---
+// --- 4. FUNÇÕES DO DIAGNÓSTICO (ATUALIZADO) ---
 
 async function setupDiagnosticoPage() {
     const quizContainer = document.getElementById('quiz-container');
     const params = new URLSearchParams(window.location.search);
     const professionalId = params.get('prof_id');
 
-    if (!professionalId) {
-        quizContainer.innerHTML = `<h1 class="text-3xl font-bold text-center text-red-500">Erro: Link Inválido</h1>`;
-        return;
-    }
+    if (!professionalId) return quizContainer.innerHTML = `<h1 class="text-3xl font-bold text-center text-red-500">Erro: Link Inválido</h1>`;
 
     const { data: qData, error } = await supabase.from('questionnaires').select('*, questions(*, options(*))').eq('professional_id', professionalId).single();
-    if (error || !qData) {
-        quizContainer.innerHTML = `<h1 class="text-3xl font-bold text-center text-red-500">Erro: Questionário não encontrado.</h1>`;
-        return;
-    }
+    if (error || !qData) return quizContainer.innerHTML = `<h1 class="text-3xl font-bold text-center text-red-500">Erro: Questionário não encontrado.</h1>`;
 
     let formHTML = `<form id="quiz-form">`;
     formHTML += `<h1 class="text-3xl font-bold text-center text-gray-800 mb-2">${qData.title}</h1><p class="text-center text-gray-600 mb-8">Suas respostas são confidenciais.</p>`;
@@ -128,16 +119,19 @@ async function setupDiagnosticoPage() {
         e.preventDefault();
         const formData = new FormData(e.target);
         let totalScore = 0;
-        for (let value of formData.values()) {
-            totalScore += parseInt(value);
-        }
+        for (let value of formData.values()) totalScore += parseInt(value);
 
         let analysis = "Sinais de Alerta Importantes";
         if (totalScore > (qData.questions.length * 3 * 0.7)) analysis = "Fundação Sólida";
         else if (totalScore > (qData.questions.length * 3 * 0.4)) analysis = "Áreas para Atenção";
 
         await supabase.from('diagnostics').insert({ score: totalScore, analysis: analysis, professional_id: professionalId });
-        localStorage.setItem('theralinkResult', JSON.stringify({ score: totalScore, analysis: analysis }));
+        
+        // NOVO: Busca o link de agendamento do profissional
+        const { data: profile } = await supabase.from('profiles').select('scheduling_link').eq('id', professionalId).single();
+        const schedulingLink = profile?.scheduling_link || 'https://calendly.com'; // Link padrão caso não haja um
+
+        localStorage.setItem('theralinkResult', JSON.stringify({ score: totalScore, analysis: analysis, schedulingLink: schedulingLink } ));
         window.location.href = 'resultado.html';
     });
 }
@@ -145,21 +139,19 @@ async function setupDiagnosticoPage() {
 function setupResultadoPage() {
     const container = document.getElementById('resultado-container');
     const result = JSON.parse(localStorage.getItem('theralinkResult'));
-    if (!result) {
-        container.innerHTML = `<h2>Erro: Resultado não encontrado.</h2>`;
-        return;
-    }
+    if (!result) return container.innerHTML = `<h2>Erro: Resultado não encontrado.</h2>`;
+    
     container.innerHTML = `
         <h2 class="text-3xl font-bold text-blue-600 mb-4">${result.analysis}</h2>
         <p class="text-gray-700 text-lg mb-8">Sua pontuação foi: ${result.score}.</p>
         <div class="mt-10 p-6 bg-green-50 rounded-lg">
             <h3 class="text-2xl font-bold text-gray-800 mb-3">Dê o Próximo Passo</h3>
-            <a href="https://calendly.com/fabianolucas/terapia" target="_blank" class="inline-block bg-green-500 text-white px-10 py-4 rounded-full font-semibold text-lg hover:bg-green-600">Agende uma Sessão</a>
+            <a href="${result.schedulingLink}" target="_blank" class="inline-block bg-green-500 text-white px-10 py-4 rounded-full font-semibold text-lg hover:bg-green-600">Agende uma Sessão</a>
         </div>`;
-    localStorage.removeItem('theralinkResult' );
+    localStorage.removeItem('theralinkResult');
 }
 
-// --- 5. FUNÇÕES DE CONFIGURAÇÃO (DESIGN MELHORADO) ---
+// --- 5. FUNÇÕES DE CONFIGURAÇÃO ---
 
 async function setupConfiguracaoPage() {
     const container = document.getElementById('config-container');
@@ -171,13 +163,9 @@ async function setupConfiguracaoPage() {
     if (error && error.code === 'PGRST116') {
         showMessage('Nenhum questionário encontrado. Criando um padrão para você...', 'success');
         questionnaire = await createDefaultQuestionnaire(user.id);
-        if (!questionnaire) {
-            container.innerHTML = `<p class="text-red-500">Erro fatal ao criar questionário padrão.</p>`;
-            return;
-        }
+        if (!questionnaire) return container.innerHTML = `<p class="text-red-500">Erro fatal ao criar questionário padrão.</p>`;
     } else if (error) {
-        container.innerHTML = `<p class="text-red-500">Erro ao carregar dados: ${error.message}</p>`;
-        return;
+        return container.innerHTML = `<p class="text-red-500">Erro ao carregar dados: ${error.message}</p>`;
     }
     
     renderConfigurator(container, questionnaire);
@@ -185,66 +173,38 @@ async function setupConfiguracaoPage() {
 
 async function createDefaultQuestionnaire(userId) {
     const { data: newQ } = await supabase.from('questionnaires').insert({ title: 'Diagnóstico de Relacionamento Padrão', professional_id: userId }).select().single();
-    const { data: newP } = await supabase.from('questions').insert({ questionnaire_id: newQ.id, text: 'Como você avalia a comunicação no relacionamento?', position: 1 }).select().single();
-    await supabase.from('options').insert([{ question_id: newP.id, text: 'Excelente', value: 3 }, { question_id: newP.id, text: 'Boa', value: 2 }, { question_id: newP.id, text: 'Pode melhorar', value: 1 }]);
+    const { data: newP } = await supabase.from('questions').insert({ questionnaire_id: newQ.id, text: 'Como você avalia a comunicação?', position: 1 }).select().single();
+    await supabase.from('options').insert([{ question_id: newP.id, text: 'Excelente', value: 3 }, { question_id: newP.id, text: 'Boa', value: 2 }]);
     const { data: reloadedQ } = await supabase.from('questionnaires').select('*, questions(*, options(*))').eq('id', newQ.id).single();
     return reloadedQ;
 }
 
 function renderConfigurator(container, qData) {
     container.innerHTML = `
-        <div class="mb-8 p-6 border-b">
-            <label class="block text-xl font-semibold mb-2 text-gray-700">Título do Questionário</label>
-            <input type="text" id="q-title" value="${qData.title}" class="input-field text-2xl">
-        </div>
+        <div class="mb-8 p-6 border-b"><label class="block text-xl font-semibold mb-2 text-gray-700">Título</label><input type="text" id="q-title" value="${qData.title}" class="w-full p-2 border rounded-lg text-2xl"></div>
         <div id="questions-list" class="space-y-6"></div>
-        <button id="add-question-btn" class="mt-8 flex items-center gap-2 bg-blue-500 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-600 transition-colors duration-300">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" /></svg>
-            Adicionar Pergunta
-        </button>`;
+        <button id="add-question-btn" class="mt-8 flex items-center gap-2 bg-blue-500 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-600">Adicionar Pergunta</button>`;
 
-    const qList = document.getElementById('questions-list' );
+    const qList = document.getElementById('questions-list');
     qData.questions.sort((a, b) => a.position - b.position).forEach(q => qList.appendChild(createQuestionEl(q)));
 
-    document.getElementById('q-title').addEventListener('blur', async (e) => {
-        await supabase.from('questionnaires').update({ title: e.target.value }).eq('id', qData.id);
-        showMessage('Título salvo!', 'success');
-    });
-
+    document.getElementById('q-title').addEventListener('blur', (e) => supabase.from('questionnaires').update({ title: e.target.value }).eq('id', qData.id));
     document.getElementById('add-question-btn').addEventListener('click', async () => {
-        const { data, error } = await supabase.from('questions').insert({ questionnaire_id: qData.id, text: 'Nova Pergunta', position: qData.questions.length + 1 }).select('*, options(*)').single();
-        if (error) return showMessage('Erro ao adicionar pergunta', 'error');
+        const { data } = await supabase.from('questions').insert({ questionnaire_id: qData.id, text: 'Nova Pergunta', position: qData.questions.length + 1 }).select('*, options(*)').single();
         qList.appendChild(createQuestionEl(data));
-        showMessage('Pergunta adicionada!', 'success');
     });
 }
 
 function createQuestionEl(q) {
     const el = document.createElement('div');
     el.className = 'p-6 border rounded-xl bg-gray-50/80';
-    el.innerHTML = `
-        <div class="flex justify-between items-start mb-4">
-            <div class="w-full">
-                <label class="block text-sm font-medium text-gray-500 mb-1">Texto da Pergunta</label>
-                <input type="text" value="${q.text}" class="input-field font-semibold text-lg question-text">
-            </div>
-            <button class="ml-4 text-gray-400 hover:text-red-600 delete-question-btn p-2 rounded-full hover:bg-red-100 transition-colors duration-200" title="Excluir Pergunta">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-            </button>
-        </div>
-        <div class="options-list space-y-3 ml-4 border-l-2 pl-6 pt-2"></div>
-        <button class="mt-4 text-sm font-semibold text-blue-600 hover:text-blue-800 add-option-btn">+ Adicionar Opção</button>`;
+    el.innerHTML = `<div class="flex justify-between items-start mb-4"><div class="w-full"><label class="block text-sm font-medium text-gray-500 mb-1">Pergunta</label><input type="text" value="${q.text}" class="w-full p-2 border rounded-lg font-semibold text-lg question-text"></div><button class="ml-4 text-gray-400 hover:text-red-600 delete-question-btn p-2 rounded-full" title="Excluir Pergunta"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button></div><div class="options-list space-y-3 ml-4 border-l-2 pl-6 pt-2"></div><button class="mt-4 text-sm font-semibold text-blue-600 hover:text-blue-800 add-option-btn">+ Adicionar Opção</button>`;
     
     const optionsList = el.querySelector('.options-list' );
     if (q.options) q.options.forEach(opt => optionsList.appendChild(createOptionEl(opt)));
 
     el.querySelector('.question-text').addEventListener('blur', (e) => supabase.from('questions').update({ text: e.target.value }).eq('id', q.id));
-    el.querySelector('.delete-question-btn').addEventListener('click', async () => {
-        if (confirm('Tem certeza?')) {
-            await supabase.from('questions').delete().eq('id', q.id);
-            el.remove();
-        }
-    });
+    el.querySelector('.delete-question-btn').addEventListener('click', async () => { if (confirm('Tem certeza?')) { await supabase.from('questions').delete().eq('id', q.id); el.remove(); } });
     el.querySelector('.add-option-btn').addEventListener('click', async () => {
         const { data } = await supabase.from('options').insert({ question_id: q.id, text: 'Nova Opção', value: 0 }).select().single();
         optionsList.appendChild(createOptionEl(data));
@@ -255,23 +215,50 @@ function createQuestionEl(q) {
 function createOptionEl(opt) {
     const el = document.createElement('div');
     el.className = 'flex items-center gap-2';
-    el.innerHTML = `
-        <input type="text" value="${opt.text}" class="input-field option-text" placeholder="Texto da opção">
-        <input type="number" value="${opt.value}" class="input-field w-24 option-value" placeholder="Valor">
-        <button class="text-gray-400 hover:text-red-600 delete-option-btn p-1 rounded-full" title="Excluir Opção">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
-        </button>`;
+    el.innerHTML = `<input type="text" value="${opt.text}" class="w-full p-2 border rounded-lg option-text" placeholder="Texto da opção"><input type="number" value="${opt.value}" class="w-24 p-2 border rounded-lg option-value" placeholder="Valor"><button class="text-gray-400 hover:text-red-600 delete-option-btn p-1 rounded-full" title="Excluir Opção"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg></button>`;
     
     el.querySelector('.option-text' ).addEventListener('blur', (e) => supabase.from('options').update({ text: e.target.value }).eq('id', opt.id));
     el.querySelector('.option-value').addEventListener('blur', (e) => supabase.from('options').update({ value: parseInt(e.target.value) || 0 }).eq('id', opt.id));
-    el.querySelector('.delete-option-btn').addEventListener('click', async () => {
-        await supabase.from('options').delete().eq('id', opt.id);
-        el.remove();
-    });
+    el.querySelector('.delete-option-btn').addEventListener('click', async () => { await supabase.from('options').delete().eq('id', opt.id); el.remove(); });
     return el;
 }
 
-// --- 6. FUNÇÃO UTILITÁRIA ---
+// --- 6. FUNÇÃO DE PERFIL (NOVO) ---
+
+async function setupPerfilPage() {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const form = document.getElementById('profile-form');
+    const nameInput = document.getElementById('full_name');
+    const linkInput = document.getElementById('scheduling_link');
+
+    // Carrega os dados existentes
+    const { data: profile, error } = await supabase.from('profiles').select('full_name, scheduling_link').eq('id', user.id).single();
+    if (error) return showMessage('Erro ao carregar perfil.', 'error');
+    
+    nameInput.value = profile.full_name || '';
+    linkInput.value = profile.scheduling_link || '';
+
+    // Salva as alterações
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const { error: updateError } = await supabase.from('profiles').update({
+            full_name: nameInput.value,
+            scheduling_link: linkInput.value
+        }).eq('id', user.id);
+
+        if (updateError) return showMessage(updateError.message, 'error');
+        showMessage('Perfil salvo com sucesso!', 'success');
+    });
+
+    document.getElementById('logout-button').addEventListener('click', async () => {
+        await supabase.auth.signOut();
+        window.location.replace('login.html');
+    });
+}
+
+// --- 7. FUNÇÃO UTILITÁRIA ---
 function showMessage(message, type = 'success', containerId = 'message-container') {
     const container = document.getElementById(containerId);
     if (!container) return;
