@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Configuração do Questionário - TheraLink</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 font-sans">
+
+    <header class="bg-white shadow-md">
+        <nav class="container mx-auto px-6 py-4 flex justify-between items-center">
+            <a href="index.html" class="text-2xl font-bold text-gray-800">TheraLink</a>
+            <div>
+                <a href="dashboard.html" class="text-gray-600 hover:text-blue-500 mr-4">Voltar ao Dashboard</a>
+                <button id="logout-button" class="bg-red-500 text-white px-4 py-2 rounded-md hover:bg-red-600">
+                    Sair
+                </button>
+            </div>
+        </nav>
+    </header>
+
+    <main class="container mx-auto py-12 px-6">
+        <h1 class="text-3xl font-bold text-gray-800 mb-8">Gerenciar Meu Questionário</h1>
+        <div id="message-container" class="mb-4"></div>
+        <div id="config-container" class="bg-white p-8 rounded-lg shadow-lg min-h-[300px]">
+            <p>Carregando configuração...</p>
+        </div>
+    </main>
+    
+    <script type="module" src="script.js"></script>
+</body>
+</html>
