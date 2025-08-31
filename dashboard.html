@@ -17,7 +17,9 @@
         <nav class="container mx-auto px-6 py-4 flex justify-between items-center">
             <h1 class="text-2xl font-bold text-blue-600">TheraLink</h1>
             <div>
-                <a href="configuracao.html" class="text-gray-600 font-semibold hover:text-blue-600 mr-6 transition-colors duration-300">Gerenciar Questionário</a>
+                <a href="configuracao.html" class="text-gray-600 font-semibold hover:text-blue-600 mr-6 transition-colors duration-300">Questionário</a>
+                <!-- NOVO LINK -->
+                <a href="perfil.html" class="text-gray-600 font-semibold hover:text-blue-600 mr-6 transition-colors duration-300">Meu Perfil</a>
                 <button id="logout-button" class="bg-red-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-red-600 transition-colors duration-300">Sair</button>
             </div>
         </nav>
@@ -27,9 +29,7 @@
         <p class="text-gray-500 mt-1">Este é o seu centro de controle.</p>
         
         <div class="grid md:grid-cols-3 gap-8 mt-10">
-            <!-- Coluna Principal -->
             <div class="md:col-span-2 space-y-8">
-                <!-- Card de Diagnósticos Recebidos -->
                 <div class="bg-white p-8 rounded-xl shadow-lg">
                     <h3 class="text-2xl font-bold text-gray-800 mb-4">Diagnósticos Recebidos</h3>
                     <div id="diagnostics-list" class="mt-4">
@@ -37,10 +37,7 @@
                     </div>
                 </div>
             </div>
-
-            <!-- Coluna Lateral -->
             <div class="md:col-span-1 space-y-8">
-                <!-- Card do Link Pessoal -->
                 <div class="bg-white p-6 rounded-xl shadow-lg">
                     <label for="personal-link" class="block text-lg font-semibold text-gray-700">Seu Link de Diagnóstico</label>
                     <p class="text-sm text-gray-500 mt-1 mb-3">Compartilhe com seus pacientes.</p>
