@@ -25,7 +25,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (currentPage === 'configuracao.html') setupConfiguracaoPage();
 });
 
-// --- 3. FUNÇÕES DE AUTENTICAÇÃO E DASHBOARD ---
+// --- 3. FUNÇÕES DE AUTENTICAÇÃO E DASHBOARD (DESIGN MELHORADO) ---
 
 async function checkUserLoggedIn() {
     const { data: { user } } = await supabase.auth.getUser();
@@ -79,13 +79,13 @@ async function setupDashboardPage() {
     const { data: diagnostics, error } = await supabase.from('diagnostics').select('*').eq('professional_id', user.id).order('created_at', { ascending: false });
     
     if (error) return diagnosticsContainer.innerHTML = `<p class="text-red-500">Erro ao carregar diagnósticos.</p>`;
-    if (!diagnostics || diagnostics.length === 0) return diagnosticsContainer.innerHTML = `<p class="text-gray-500">Nenhum diagnóstico recebido ainda.</p>`;
+    if (!diagnostics || diagnostics.length === 0) return diagnosticsContainer.innerHTML = `<div class="text-center py-10 px-6 border-2 border-dashed rounded-lg"><p class="text-gray-500">Nenhum diagnóstico recebido ainda.</p><p class="text-sm text-gray-400 mt-2">Compartilhe seu link para começar.</p></div>`;
 
-    let tableHTML = `<table class="w-full text-left mt-4"><thead class="border-b"><tr><th class="py-2">Data</th><th class="py-2">Pontuação</th><th class="py-2">Análise</th></tr></thead><tbody>`;
+    let tableHTML = `<div class="overflow-x-auto"><table class="w-full text-left text-sm"><thead class="bg-gray-50 text-gray-600 uppercase tracking-wider"><tr><th class="p-3">Data</th><th class="p-3">Pontuação</th><th class="p-3">Análise</th></tr></thead><tbody class="bg-white divide-y">`;
     diagnostics.forEach(d => {
-        tableHTML += `<tr class="border-b"><td class="py-3">${new Date(d.created_at).toLocaleDateString('pt-BR')}</td><td class="py-3">${d.score}</td><td class="py-3">${d.analysis}</td></tr>`;
+        tableHTML += `<tr class="hover:bg-gray-50"><td class="p-3">${new Date(d.created_at).toLocaleDateString('pt-BR')}</td><td class="p-3 font-semibold">${d.score}</td><td class="p-3">${d.analysis}</td></tr>`;
     });
-    tableHTML += `</tbody></table>`;
+    tableHTML += `</tbody></table></div>`;
     diagnosticsContainer.innerHTML = tableHTML;
 
     document.getElementById('logout-button').addEventListener('click', async () => {
@@ -94,7 +94,7 @@ async function setupDashboardPage() {
     });
 }
 
-// --- 4. FUNÇÕES DO DIAGNÓSTICO (DINÂMICO - FASE 4) ---
+// --- 4. FUNÇÕES DO DIAGNÓSTICO ---
 
 async function setupDiagnosticoPage() {
     const quizContainer = document.getElementById('quiz-container');
@@ -132,7 +132,7 @@ async function setupDiagnosticoPage() {
             totalScore += parseInt(value);
         }
 
-        let analysis = "Sinais de Alerta Importantes"; // Lógica de análise simplificada
+        let analysis = "Sinais de Alerta Importantes";
         if (totalScore > (qData.questions.length * 3 * 0.7)) analysis = "Fundação Sólida";
         else if (totalScore > (qData.questions.length * 3 * 0.4)) analysis = "Áreas para Atenção";
 
@@ -159,7 +159,7 @@ function setupResultadoPage() {
     localStorage.removeItem('theralinkResult' );
 }
 
-// --- 5. FUNÇÕES DE CONFIGURAÇÃO (NOVO - FASE 4) ---
+// --- 5. FUNÇÕES DE CONFIGURAÇÃO (DESIGN MELHORADO) ---
 
 async function setupConfiguracaoPage() {
     const container = document.getElementById('config-container');
@@ -168,11 +168,11 @@ async function setupConfiguracaoPage() {
 
     let { data: questionnaire, error } = await supabase.from('questionnaires').select('*, questions(*, options(*))').eq('professional_id', user.id).single();
 
-    if (error && error.code === 'PGRST116') { // Not found, create a default one
+    if (error && error.code === 'PGRST116') {
         showMessage('Nenhum questionário encontrado. Criando um padrão para você...', 'success');
         questionnaire = await createDefaultQuestionnaire(user.id);
         if (!questionnaire) {
-            container.innerHTML = `<p class="text-red-500">Erro fatal ao criar questionário padrão. Contate o suporte.</p>`;
+            container.innerHTML = `<p class="text-red-500">Erro fatal ao criar questionário padrão.</p>`;
             return;
         }
     } else if (error) {
@@ -184,29 +184,26 @@ async function setupConfiguracaoPage() {
 }
 
 async function createDefaultQuestionnaire(userId) {
-    const { data: newQ, error: qError } = await supabase.from('questionnaires').insert({ title: 'Diagnóstico de Relacionamento Padrão', professional_id: userId }).select().single();
-    if (qError) return null;
-
-    const { data: newP, error: pError } = await supabase.from('questions').insert({ questionnaire_id: newQ.id, text: 'Como você avalia a comunicação no relacionamento?', position: 1 }).select().single();
-    if (pError) return null;
-
-    await supabase.from('options').insert([
-        { question_id: newP.id, text: 'Excelente', value: 3 },
-        { question_id: newP.id, text: 'Boa', value: 2 },
-        { question_id: newP.id, text: 'Pode melhorar', value: 1 }
-    ]);
-    
+    const { data: newQ } = await supabase.from('questionnaires').insert({ title: 'Diagnóstico de Relacionamento Padrão', professional_id: userId }).select().single();
+    const { data: newP } = await supabase.from('questions').insert({ questionnaire_id: newQ.id, text: 'Como você avalia a comunicação no relacionamento?', position: 1 }).select().single();
+    await supabase.from('options').insert([{ question_id: newP.id, text: 'Excelente', value: 3 }, { question_id: newP.id, text: 'Boa', value: 2 }, { question_id: newP.id, text: 'Pode melhorar', value: 1 }]);
     const { data: reloadedQ } = await supabase.from('questionnaires').select('*, questions(*, options(*))').eq('id', newQ.id).single();
     return reloadedQ;
 }
 
 function renderConfigurator(container, qData) {
     container.innerHTML = `
-        <div class="mb-6"><label class="block text-lg font-semibold mb-2">Título do Questionário</label><input type="text" id="q-title" value="${qData.title}" class="w-full p-2 border rounded text-xl"></div>
+        <div class="mb-8 p-6 border-b">
+            <label class="block text-xl font-semibold mb-2 text-gray-700">Título do Questionário</label>
+            <input type="text" id="q-title" value="${qData.title}" class="input-field text-2xl">
+        </div>
         <div id="questions-list" class="space-y-6"></div>
-        <button id="add-question-btn" class="mt-8 bg-green-500 text-white px-6 py-2 rounded-lg hover:bg-green-600">Adicionar Pergunta</button>`;
+        <button id="add-question-btn" class="mt-8 flex items-center gap-2 bg-blue-500 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-600 transition-colors duration-300">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" /></svg>
+            Adicionar Pergunta
+        </button>`;
 
-    const qList = document.getElementById('questions-list');
+    const qList = document.getElementById('questions-list' );
     qData.questions.sort((a, b) => a.position - b.position).forEach(q => qList.appendChild(createQuestionEl(q)));
 
     document.getElementById('q-title').addEventListener('blur', async (e) => {
@@ -224,55 +221,52 @@ function renderConfigurator(container, qData) {
 
 function createQuestionEl(q) {
     const el = document.createElement('div');
-    el.className = 'p-6 border rounded-xl bg-gray-50';
-    el.innerHTML = `<div class="flex justify-between items-center mb-4"><input type="text" value="${q.text}" class="w-full p-2 border rounded font-semibold text-lg question-text"><button class="ml-4 text-red-500 delete-question-btn p-2 rounded-full hover:bg-red-100">Excluir</button></div><div class="options-list space-y-2 ml-4 border-l-2 pl-4"></div><button class="mt-3 text-sm text-blue-500 add-option-btn">+ Adicionar Opção</button>`;
+    el.className = 'p-6 border rounded-xl bg-gray-50/80';
+    el.innerHTML = `
+        <div class="flex justify-between items-start mb-4">
+            <div class="w-full">
+                <label class="block text-sm font-medium text-gray-500 mb-1">Texto da Pergunta</label>
+                <input type="text" value="${q.text}" class="input-field font-semibold text-lg question-text">
+            </div>
+            <button class="ml-4 text-gray-400 hover:text-red-600 delete-question-btn p-2 rounded-full hover:bg-red-100 transition-colors duration-200" title="Excluir Pergunta">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+            </button>
+        </div>
+        <div class="options-list space-y-3 ml-4 border-l-2 pl-6 pt-2"></div>
+        <button class="mt-4 text-sm font-semibold text-blue-600 hover:text-blue-800 add-option-btn">+ Adicionar Opção</button>`;
     
-    const optionsList = el.querySelector('.options-list');
-    if (q.options) {
-        q.options.forEach(opt => optionsList.appendChild(createOptionEl(opt)));
-    }
+    const optionsList = el.querySelector('.options-list' );
+    if (q.options) q.options.forEach(opt => optionsList.appendChild(createOptionEl(opt)));
 
-    el.querySelector('.question-text').addEventListener('blur', async (e) => {
-        await supabase.from('questions').update({ text: e.target.value }).eq('id', q.id);
-        showMessage('Pergunta salva!', 'success');
-    });
-
+    el.querySelector('.question-text').addEventListener('blur', (e) => supabase.from('questions').update({ text: e.target.value }).eq('id', q.id));
     el.querySelector('.delete-question-btn').addEventListener('click', async () => {
-        if (confirm('Tem certeza que deseja excluir esta pergunta e todas as suas opções?')) {
+        if (confirm('Tem certeza?')) {
             await supabase.from('questions').delete().eq('id', q.id);
             el.remove();
-            showMessage('Pergunta excluída!', 'success');
         }
     });
-
     el.querySelector('.add-option-btn').addEventListener('click', async () => {
-        const { data, error } = await supabase.from('options').insert({ question_id: q.id, text: 'Nova Opção', value: 0 }).select().single();
-        if (error) return showMessage('Erro ao adicionar opção', 'error');
+        const { data } = await supabase.from('options').insert({ question_id: q.id, text: 'Nova Opção', value: 0 }).select().single();
         optionsList.appendChild(createOptionEl(data));
-        showMessage('Opção adicionada!', 'success');
     });
     return el;
 }
 
 function createOptionEl(opt) {
     const el = document.createElement('div');
-    el.className = 'flex items-center';
-    el.innerHTML = `<input type="text" value="${opt.text}" class="w-2/3 p-1 border rounded option-text"><input type="number" value="${opt.value}" class="w-1/4 p-1 border rounded ml-2 option-value"><button class="ml-2 text-gray-400 hover:text-red-600 delete-option-btn p-1 rounded-full">X</button>`;
+    el.className = 'flex items-center gap-2';
+    el.innerHTML = `
+        <input type="text" value="${opt.text}" class="input-field option-text" placeholder="Texto da opção">
+        <input type="number" value="${opt.value}" class="input-field w-24 option-value" placeholder="Valor">
+        <button class="text-gray-400 hover:text-red-600 delete-option-btn p-1 rounded-full" title="Excluir Opção">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+        </button>`;
     
-    el.querySelector('.option-text').addEventListener('blur', async (e) => {
-        await supabase.from('options').update({ text: e.target.value }).eq('id', opt.id);
-        showMessage('Opção salva!', 'success');
-    });
-
-    el.querySelector('.option-value').addEventListener('blur', async (e) => {
-        await supabase.from('options').update({ value: parseInt(e.target.value) || 0 }).eq('id', opt.id);
-        showMessage('Valor salvo!', 'success');
-    });
-
+    el.querySelector('.option-text' ).addEventListener('blur', (e) => supabase.from('options').update({ text: e.target.value }).eq('id', opt.id));
+    el.querySelector('.option-value').addEventListener('blur', (e) => supabase.from('options').update({ value: parseInt(e.target.value) || 0 }).eq('id', opt.id));
     el.querySelector('.delete-option-btn').addEventListener('click', async () => {
         await supabase.from('options').delete().eq('id', opt.id);
         el.remove();
-        showMessage('Opção excluída!', 'success');
     });
     return el;
 }
@@ -282,6 +276,6 @@ function showMessage(message, type = 'success', containerId = 'message-container
     const container = document.getElementById(containerId);
     if (!container) return;
     const color = type === 'success' ? 'green' : 'red';
-    container.innerHTML = `<p class="text-${color}-500 text-center">${message}</p>`;
+    container.innerHTML = `<p class="text-${color}-600 font-semibold">${message}</p>`;
     setTimeout(() => { container.innerHTML = '' }, 3000);
 }
