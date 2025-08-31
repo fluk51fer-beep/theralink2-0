@@ -91,7 +91,7 @@ async function setupDashboardPage() {
     });
 }
 
-// --- 4. FUNÇÕES DO DIAGNÓSTICO (VERSÃO FINAL E ESTÁVEL) ---
+// --- 4. FUNÇÕES DO DIAGNÓSTICO ---
 
 async function setupDiagnosticoPage() {
     const quizContainer = document.getElementById('quiz-container');
@@ -102,30 +102,11 @@ async function setupDiagnosticoPage() {
         return quizContainer.innerHTML = `<h1 class="text-3xl font-bold text-center text-red-500">Erro: Link Inválido</h1>`;
     }
 
-    // CORREÇÃO FINAL: A busca foi separada em duas etapas para robustez.
-    // 1. Busca o perfil do profissional para obter o link de agendamento.
-    const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('scheduling_link')
-        .eq('id', professionalId)
-        .single();
+    const { data: profile, error: profileError } = await supabase.from('profiles').select('scheduling_link').eq('id', professionalId).single();
+    if (profileError) return quizContainer.innerHTML = `<h1 class="text-3xl font-bold text-center text-red-500">Erro: Profissional não encontrado.</h1>`;
 
-    if (profileError) {
-        console.error('Erro ao buscar perfil:', profileError);
-        return quizContainer.innerHTML = `<h1 class="text-3xl font-bold text-center text-red-500">Erro: Profissional não encontrado.</h1>`;
-    }
-
-    // 2. Busca o questionário associado a esse profissional.
-    const { data: questionnaire, error: questionnaireError } = await supabase
-        .from('questionnaires')
-        .select('*, questions(*, options(*))')
-        .eq('professional_id', professionalId)
-        .single();
-
-    if (questionnaireError || !questionnaire) {
-        console.error('Erro ao buscar questionário:', questionnaireError);
-        return quizContainer.innerHTML = `<h1 class="text-3xl font-bold text-center text-red-500">Erro: Questionário não encontrado.</h1>`;
-    }
+    const { data: questionnaire, error: questionnaireError } = await supabase.from('questionnaires').select('*, questions(*, options(*))').eq('professional_id', professionalId).single();
+    if (questionnaireError || !questionnaire) return quizContainer.innerHTML = `<h1 class="text-3xl font-bold text-center text-red-500">Erro: Questionário não encontrado.</h1>`;
     
     const qData = questionnaire;
     const schedulingLink = profile.scheduling_link;
@@ -178,7 +159,7 @@ function setupResultadoPage() {
     localStorage.removeItem('theralinkResult');
 }
 
-// --- 5. FUNÇÕES DE CONFIGURAÇÃO ---
+// --- 5. FUNÇÕES DE CONFIGURAÇÃO (LÓGICA DE NOVO USUÁRIO CORRIGIDA) ---
 
 async function setupConfiguracaoPage() {
     const container = document.getElementById('config-container');
@@ -187,23 +168,53 @@ async function setupConfiguracaoPage() {
 
     let { data: questionnaire, error } = await supabase.from('questionnaires').select('*, questions(*, options(*))').eq('professional_id', user.id).single();
 
-    if (error && error.code === 'PGRST116') {
-        showMessage('Nenhum questionário encontrado. Criando um padrão para você...', 'success');
-        questionnaire = await createDefaultQuestionnaire(user.id);
-        if (!questionnaire) return container.innerHTML = `<p class="text-red-500">Erro fatal ao criar questionário padrão.</p>`;
+    // CORREÇÃO: A lógica para um novo usuário foi tornada mais robusta.
+    if (error && error.code === 'PGRST116') { // Código para "nenhum resultado encontrado"
+        showMessage('Bem-vindo! Criando um questionário padrão para você começar...', 'success');
+        
+        // A função agora espera (await) a criação ser concluída.
+        const newQuestionnaire = await createDefaultQuestionnaire(user.id);
+        
+        if (newQuestionnaire) {
+            // Se a criação foi bem-sucedida, renderiza a página com os novos dados.
+            renderConfigurator(container, newQuestionnaire);
+        } else {
+            // Se a criação falhou, mostra uma mensagem de erro clara.
+            container.innerHTML = `<p class="text-red-500">Erro fatal ao criar o questionário padrão. Por favor, contate o suporte.</p>`;
+        }
     } else if (error) {
-        return container.innerHTML = `<p class="text-red-500">Erro ao carregar dados: ${error.message}</p>`;
+        // Erro genérico ao buscar os dados
+        container.innerHTML = `<p class="text-red-500">Erro ao carregar seus dados: ${error.message}</p>`;
+    } else {
+        // Se encontrou um questionário, renderiza normalmente.
+        renderConfigurator(container, questionnaire);
     }
-    
-    renderConfigurator(container, questionnaire);
 }
 
 async function createDefaultQuestionnaire(userId) {
-    const { data: newQ } = await supabase.from('questionnaires').insert({ title: 'Diagnóstico de Relacionamento Padrão', professional_id: userId }).select().single();
-    const { data: newP } = await supabase.from('questions').insert({ questionnaire_id: newQ.id, text: 'Como você avalia a comunicação?', position: 1 }).select().single();
-    await supabase.from('options').insert([{ question_id: newP.id, text: 'Excelente', value: 3 }, { question_id: newP.id, text: 'Boa', value: 2 }]);
-    const { data: reloadedQ } = await supabase.from('questionnaires').select('*, questions(*, options(*))').eq('id', newQ.id).single();
-    return reloadedQ;
+    try {
+        const { data: newQ, error: qError } = await supabase.from('questionnaires').insert({ title: 'Diagnóstico de Relacionamento Padrão', professional_id: userId }).select().single();
+        if (qError) throw qError;
+
+        const { data: newP, error: pError } = await supabase.from('questions').insert({ questionnaire_id: newQ.id, text: 'Como você avalia a comunicação no relacionamento?', position: 1 }).select().single();
+        if (pError) throw pError;
+
+        const { error: oError } = await supabase.from('options').insert([
+            { question_id: newP.id, text: 'Excelente', value: 3 },
+            { question_id: newP.id, text: 'Boa', value: 2 },
+            { question_id: newP.id, text: 'Pode melhorar', value: 1 }
+        ]);
+        if (oError) throw oError;
+        
+        // Recarrega todos os dados para garantir que a interface tenha a informação completa.
+        const { data: reloadedQ, error: reloadError } = await supabase.from('questionnaires').select('*, questions(*, options(*))').eq('id', newQ.id).single();
+        if (reloadError) throw reloadError;
+
+        return reloadedQ;
+    } catch (error) {
+        console.error("Erro detalhado ao criar questionário padrão:", error);
+        return null; // Retorna nulo em caso de qualquer falha no processo.
+    }
 }
 
 function renderConfigurator(container, qData) {
