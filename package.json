@@ -1,0 +1,9 @@
+{
+  "scripts": {
+    "start": "supabase start",
+    "deploy": "supabase functions deploy --project-ref kdaqonbvtjhmizlxqvsf"
+  },
+  "devDependencies": {
+    "supabase": "^1.100.1"
+  }
+}
