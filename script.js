@@ -10,10 +10,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const currentPage = window.location.pathname.split('/').pop() || 'index.html';
     const protectedPages = ['dashboard.html', 'configuracao.html', 'perfil.html'];
 
+    // CORREÇÃO: A verificação de assinatura só roda em páginas protegidas.
     if (protectedPages.includes(currentPage)) {
-        checkSubscription(); // Nova função principal para páginas protegidas
+        checkSubscription();
     }
 
+    // O restante da lógica de roteamento permanece.
     if (currentPage === 'cadastro.html') setupCadastroPage();
     if (currentPage === 'login.html') setupLoginPage();
     if (currentPage === 'dashboard.html') setupDashboardPage();
@@ -33,19 +35,27 @@ async function checkSubscription() {
     const { data: profile, error } = await supabase.from('profiles').select('subscription_status, subscription_ends_at').eq('id', user.id).single();
     if (error) {
         console.error("Erro ao buscar perfil:", error);
-        return; // Permite o acesso se houver erro, para não bloquear indevidamente
+        return; 
+    }
+
+    // Se não houver perfil, algo está errado, mas não bloqueia para evitar loops.
+    if (!profile) {
+        console.error("Perfil não encontrado para o usuário logado.");
+        return;
     }
 
     const isActive = profile.subscription_status === 'active';
     const isOnTrial = profile.subscription_status === 'trialing';
-    const trialEndDate = profile.subscription_ends_at ? new Date(profile.subscription_ends_at) : new Date();
+    const trialEndDate = profile.subscription_ends_at ? new Date(profile.subscription_ends_at) : new Date(0); // Data no passado se for nulo
     const now = new Date();
 
     if (isActive || (isOnTrial && now < trialEndDate)) {
         // Acesso liberado
     } else {
-        // Acesso bloqueado, redireciona para pagamento
-        window.location.replace('pagamento.html');
+        const currentPage = window.location.pathname.split('/').pop();
+        if (currentPage !== 'pagamento.html') {
+            window.location.replace('pagamento.html');
+        }
     }
 }
 
@@ -74,26 +84,33 @@ function setupLoginPage() {
         window.location.replace('dashboard.html');
     });
 }
-
+    
 function setupPagamentoPage() {
     const monthlyBtn = document.getElementById('checkout-monthly');
     const annualBtn = document.getElementById('checkout-annual');
 
-    monthlyBtn.addEventListener('click', () => redirectToCheckout('price_1S2IAmEEmkJVXIEHmaq03DYQ'));
-    annualBtn.addEventListener('click', () => redirectToCheckout('price_1S2IAmEEmkJVXIEHLJ6IUvj4'));
+    // IDs dos preços que você me forneceu
+    const monthlyPriceId = 'price_1S2IAmEEmkJVXIEHmaq03DYQ';
+    const annualPriceId = 'price_1S2IAmEEmkJVXIEHLJ6IUvj4';
+
+    monthlyBtn.addEventListener('click', () => redirectToCheckout(monthlyPriceId));
+    annualBtn.addEventListener('click', () => redirectToCheckout(annualPriceId));
 }
 
 async function redirectToCheckout(priceId) {
     showMessage('Criando sua sessão de pagamento segura...', 'success');
     try {
         const { data: { session } } = await supabase.auth.getSession();
-        if (!session) throw new Error('Usuário não autenticado.');
+        if (!session) throw new Error('Usuário não autenticado. Por favor, faça login novamente.');
 
+        // Invoca a Edge Function que criamos
         const { data, error } = await supabase.functions.invoke('create-checkout-session', {
             body: { priceId },
         });
 
         if (error) throw error;
+        if (data.error) throw new Error(data.error);
+        
         window.location.href = data.url;
 
     } catch (error) {
@@ -252,8 +269,7 @@ function renderConfigurator(container, qData) {
     qData.questions.sort((a, b) => a.position - b.position).forEach(q => qList.appendChild(createQuestionEl(q)));
     document.getElementById('q-title').addEventListener('blur', (e) => supabase.from('questionnaires').update({ title: e.target.value }).eq('id', qData.id));
     document.getElementById('add-question-btn').addEventListener('click', async () => {
-        const { data } = await supabase.from('questions').insert({ questionnaire_id: qData.id, text: 'Nova Pergunta', position: qData.questions.length + 1 }).select('*, options(*)').single();
-        qList.appendChild(createQuestionEl(data));
+        const { data } = await supabase.from('questions').insert({ questionnaire_id: qData.id, text: 'Nova Pergunta', position: qData.questions.length + 1 }).select('*, options(*)').single.
     });
 }
 
@@ -275,4 +291,48 @@ function createQuestionEl(q) {
 function createOptionEl(opt) {
     const el = document.createElement('div');
     el.className = 'flex items-center gap-2';
-    el.innerHTML = `<input type="text" value="${opt.text}" class="w-full p-2 border rounded-lg option-text" placeholder="Texto da opção"><input type="number" value="${opt.value}" class="w-24 p-2 border rounded-lg option-value" placeholder
+    el.innerHTML = `<input type="text" value="${opt.text}" class="w-full p-2 border rounded-lg option-text" placeholder="Texto da opção"><input type="number" value="${opt.value}" class="w-24 p-2 border rounded-lg option-value" placeholder="Valor"><button class="text-gray-400 hover:text-red-600 delete-option-btn p-1 rounded-full" title="Excluir Opção"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg></button>`;
+    el.querySelector('.option-text' ).addEventListener('blur', (e) => supabase.from('options').update({ text: e.target.value }).eq('id', opt.id));
+    el.querySelector('.option-value').addEventListener('blur', (e) => supabase.from('options').update({ value: parseInt(e.target.value) || 0 }).eq('id', opt.id));
+    el.querySelector('.delete-option-btn').addEventListener('click', async () => { await supabase.from('options').delete().eq('id', opt.id); el.remove(); });
+    return el;
+}
+
+async function setupPerfilPage() {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const form = document.getElementById('profile-form');
+    const nameInput = document.getElementById('full_name');
+    const linkInput = document.getElementById('scheduling_link');
+
+    const { data: profile, error } = await supabase.from('profiles').select('full_name, scheduling_link').eq('id', user.id).single();
+    if (error) return showMessage('Erro ao carregar perfil.', 'error');
+    
+    nameInput.value = profile.full_name || '';
+    linkInput.value = profile.scheduling_link || '';
+
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const { error: updateError } = await supabase.from('profiles').update({
+            full_name: nameInput.value,
+            scheduling_link: linkInput.value
+        }).eq('id', user.id);
+
+        if (updateError) return showMessage(updateError.message, 'error');
+        showMessage('Perfil salvo com sucesso!', 'success');
+    });
+
+    document.getElementById('logout-button').addEventListener('click', async () => {
+        await supabase.auth.signOut();
+        window.location.replace('login.html');
+    });
+}
+
+function showMessage(message, type = 'success', containerId = 'message-container') {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    const color = type === 'success' ? 'green' : 'red';
+    container.innerHTML = `<p class="text-${color}-600 font-semibold">${message}</p>`;
+    setTimeout(() => { container.innerHTML = '' }, 3000);
+}
