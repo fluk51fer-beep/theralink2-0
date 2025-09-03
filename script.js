@@ -2,7 +2,7 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm';
 
 const supabaseUrl = 'https://kdaqonbvtjhmizlxqvsf.supabase.co';
-const supabaseKey = 'SUA_CHAVE_ANON_AQUI'; // CERTIFIQUE-SE DE QUE SUA CHAVE ESTÁ AQUI
+const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtkYXFvbmJ2dGpobWl6bHhxdnNmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY1MDU1NTQsImV4cCI6MjA3MjA4MTU1NH0.11uPyVDLG3gHZN0o5S1V4fjU_Zly5LtJ8m0wUqGEDgk'; // CERTIFIQUE-SE DE QUE SUA CHAVE ESTÁ AQUI
 const supabase = createClient(supabaseUrl, supabaseKey );
 
 // --- 2. LÓGICA PRINCIPAL ---
