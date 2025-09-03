@@ -8,14 +8,12 @@ const supabase = createClient(supabaseUrl, supabaseKey );
 // --- 2. LÓGICA PRINCIPAL ---
 document.addEventListener('DOMContentLoaded', () => {
     const currentPage = window.location.pathname.split('/').pop() || 'index.html';
-    const protectedPages = ['dashboard.html', 'configuracao.html', 'perfil.html'];
+    const protectedPages = ['dashboard.html', 'configuracao.html', 'perfil.html', 'pagamento.html'];
 
-    // CORREÇÃO: A verificação de assinatura só roda em páginas protegidas.
     if (protectedPages.includes(currentPage)) {
-        checkSubscription();
+        checkAuthAndSubscription();
     }
 
-    // O restante da lógica de roteamento permanece.
     if (currentPage === 'cadastro.html') setupCadastroPage();
     if (currentPage === 'login.html') setupLoginPage();
     if (currentPage === 'dashboard.html') setupDashboardPage();
@@ -28,32 +26,32 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // --- 3. FUNÇÕES DE AUTENTICAÇÃO E PAGAMENTO ---
 
-async function checkSubscription() {
+async function checkAuthAndSubscription() {
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return window.location.replace('login.html');
-
-    const { data: profile, error } = await supabase.from('profiles').select('subscription_status, subscription_ends_at').eq('id', user.id).single();
-    if (error) {
-        console.error("Erro ao buscar perfil:", error);
-        return; 
+    if (!user) {
+        // Se não há usuário, redireciona para o login, exceto se já estiver lá.
+        if (window.location.pathname.indexOf('login.html') === -1) {
+            window.location.replace('login.html');
+        }
+        return;
     }
 
-    // Se não houver perfil, algo está errado, mas não bloqueia para evitar loops.
-    if (!profile) {
-        console.error("Perfil não encontrado para o usuário logado.");
+    const { data: profile, error } = await supabase.from('profiles').select('subscription_status, subscription_ends_at').eq('id', user.id).single();
+    
+    if (error || !profile) {
+        console.error("Erro ao buscar perfil ou perfil não encontrado:", error);
+        // Não bloqueia o usuário, mas loga o erro. Pode ser um atraso na criação do perfil.
         return;
     }
 
     const isActive = profile.subscription_status === 'active';
     const isOnTrial = profile.subscription_status === 'trialing';
-    const trialEndDate = profile.subscription_ends_at ? new Date(profile.subscription_ends_at) : new Date(0); // Data no passado se for nulo
+    const trialEndDate = profile.subscription_ends_at ? new Date(profile.subscription_ends_at) : new Date(0);
     const now = new Date();
 
-    if (isActive || (isOnTrial && now < trialEndDate)) {
-        // Acesso liberado
-    } else {
-        const currentPage = window.location.pathname.split('/').pop();
-        if (currentPage !== 'pagamento.html') {
+    if (!isActive && !(isOnTrial && now < trialEndDate)) {
+        // Se a assinatura não está ativa e o trial acabou, redireciona para pagamento
+        if (window.location.pathname.indexOf('pagamento.html') === -1) {
             window.location.replace('pagamento.html');
         }
     }
@@ -61,21 +59,29 @@ async function checkSubscription() {
 
 function setupCadastroPage() {
     const form = document.getElementById('signup-form');
+    if (!form) return;
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
         const { name, email, password } = Object.fromEntries(new FormData(e.target));
+        
+        // Lógica simplificada: apenas cria o usuário. O Trigger no DB faz o resto.
         const { error } = await supabase.auth.signUp({
             email, password,
             options: { data: { full_name: name } }
         });
-        if (error) return showMessage(error.message, 'error');
-        showMessage('Cadastro realizado com sucesso! Redirecionando...', 'success');
-        setTimeout(() => window.location.replace('login.html'), 2000);
+
+        if (error) {
+            return showMessage(error.message, 'error');
+        }
+        
+        showMessage('Cadastro realizado com sucesso! Por favor, verifique seu e-mail para confirmar e depois faça o login.', 'success');
+        // Não redireciona mais, instrui o usuário a verificar o e-mail.
     });
 }
 
 function setupLoginPage() {
     const form = document.getElementById('login-form');
+    if (!form) return;
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
         const { email, password } = Object.fromEntries(new FormData(e.target));
@@ -88,8 +94,8 @@ function setupLoginPage() {
 function setupPagamentoPage() {
     const monthlyBtn = document.getElementById('checkout-monthly');
     const annualBtn = document.getElementById('checkout-annual');
+    if (!monthlyBtn || !annualBtn) return;
 
-    // IDs dos preços que você me forneceu
     const monthlyPriceId = 'price_1S2IAmEEmkJVXIEHmaq03DYQ';
     const annualPriceId = 'price_1S2IAmEEmkJVXIEHLJ6IUvj4';
 
@@ -103,23 +109,19 @@ async function redirectToCheckout(priceId) {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) throw new Error('Usuário não autenticado. Por favor, faça login novamente.');
 
-        // Invoca a Edge Function que criamos
-        const { data, error } = await supabase.functions.invoke('create-checkout-session', {
-            body: { priceId },
-        });
+        const { data, error } = await supabase.functions.invoke('create-checkout-session', { body: { priceId } });
 
         if (error) throw error;
         if (data.error) throw new Error(data.error);
         
         window.location.href = data.url;
-
     } catch (error) {
         showMessage(`Erro: ${error.message}`, 'error');
     }
 }
 
 // --- O RESTANTE DO CÓDIGO PERMANECE O MESMO ---
-// (Colei tudo para garantir que não haja erros)
+// (As funções de dashboard, diagnóstico, etc. não precisam de alteração)
 
 async function setupDashboardPage() {
     const { data: { user } } = await supabase.auth.getUser();
@@ -222,10 +224,10 @@ function setupResultadoPage() {
 }
 
 async function setupConfiguracaoPage() {
-    const container = document.getElementById('config-container');
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
+    const container = document.getElementById('config-container');
     let { data: questionnaire, error } = await supabase.from('questionnaires').select('*, questions(*, options(*))').eq('professional_id', user.id).single();
 
     if (error && error.code === 'PGRST116') {
@@ -269,7 +271,8 @@ function renderConfigurator(container, qData) {
     qData.questions.sort((a, b) => a.position - b.position).forEach(q => qList.appendChild(createQuestionEl(q)));
     document.getElementById('q-title').addEventListener('blur', (e) => supabase.from('questionnaires').update({ title: e.target.value }).eq('id', qData.id));
     document.getElementById('add-question-btn').addEventListener('click', async () => {
-        const { data } = await supabase.from('questions').insert({ questionnaire_id: qData.id, text: 'Nova Pergunta', position: qData.questions.length + 1 }).select('*, options(*)').single.
+        const { data } = await supabase.from('questions').insert({ questionnaire_id: qData.id, text: 'Nova Pergunta', position: qData.questions.length + 1 }).select('*, options(*)').single();
+        qList.appendChild(createQuestionEl(data));
     });
 }
 
@@ -334,5 +337,5 @@ function showMessage(message, type = 'success', containerId = 'message-container
     if (!container) return;
     const color = type === 'success' ? 'green' : 'red';
     container.innerHTML = `<p class="text-${color}-600 font-semibold">${message}</p>`;
-    setTimeout(() => { container.innerHTML = '' }, 3000);
+    setTimeout(() => { container.innerHTML = '' }, 5000); // Aumentei o tempo para 5 segundos
 }
