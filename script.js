@@ -24,58 +24,53 @@ document.addEventListener('DOMContentLoaded', () => {
     if (currentPage === 'pagamento.html') setupPagamentoPage();
 });
 
-// --- 3. FUNÇÕES DE AUTENTICAÇÃO E PAGAMENTO ---
+// --- 3. FUNÇÕES DE AUTENTICAÇÃO E PAGAMENTO (LÓGICA DE TESTE SIMPLIFICADA) ---
 
 async function checkAuthAndSubscription() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
-        // Se não há usuário, redireciona para o login, exceto se já estiver lá.
         if (window.location.pathname.indexOf('login.html') === -1) {
             window.location.replace('login.html');
         }
         return;
     }
 
-    const { data: profile, error } = await supabase.from('profiles').select('subscription_status, subscription_ends_at').eq('id', user.id).single();
+    const { data: profile, error } = await supabase.from('profiles').select('subscription_status').eq('id', user.id).single();
     
     if (error || !profile) {
         console.error("Erro ao buscar perfil ou perfil não encontrado:", error);
-        // Não bloqueia o usuário, mas loga o erro. Pode ser um atraso na criação do perfil.
         return;
     }
 
     const isActive = profile.subscription_status === 'active';
     const isOnTrial = profile.subscription_status === 'trialing';
-    const trialEndDate = profile.subscription_ends_at ? new Date(profile.subscription_ends_at) : new Date(0);
-    const now = new Date();
 
-    if (!isActive && !(isOnTrial && now < trialEndDate)) {
-        // Se a assinatura não está ativa e o trial acabou, redireciona para pagamento
+    // *** MUDANÇA CRÍTICA: REMOVIDA A VERIFICAÇÃO DE DATA ***
+    // Se o usuário está ativo OU em teste, o acesso é liberado. Ponto final.
+    if (isActive || isOnTrial) {
+        // Acesso liberado
+    } else {
+        // Se não for nem ativo nem em teste, redireciona para pagamento.
         if (window.location.pathname.indexOf('pagamento.html') === -1) {
             window.location.replace('pagamento.html');
         }
     }
 }
 
+// O restante do código permanece exatamente o mesmo da versão anterior.
+// Cole o restante do código a partir da função setupCadastroPage() aqui.
 function setupCadastroPage() {
     const form = document.getElementById('signup-form');
     if (!form) return;
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
         const { name, email, password } = Object.fromEntries(new FormData(e.target));
-        
-        // Lógica simplificada: apenas cria o usuário. O Trigger no DB faz o resto.
         const { error } = await supabase.auth.signUp({
             email, password,
             options: { data: { full_name: name } }
         });
-
-        if (error) {
-            return showMessage(error.message, 'error');
-        }
-        
+        if (error) return showMessage(error.message, 'error');
         showMessage('Cadastro realizado com sucesso! Por favor, verifique seu e-mail para confirmar e depois faça o login.', 'success');
-        // Não redireciona mais, instrui o usuário a verificar o e-mail.
     });
 }
 
@@ -119,9 +114,6 @@ async function redirectToCheckout(priceId) {
         showMessage(`Erro: ${error.message}`, 'error');
     }
 }
-
-// --- O RESTANTE DO CÓDIGO PERMANECE O MESMO ---
-// (As funções de dashboard, diagnóstico, etc. não precisam de alteração)
 
 async function setupDashboardPage() {
     const { data: { user } } = await supabase.auth.getUser();
@@ -337,5 +329,5 @@ function showMessage(message, type = 'success', containerId = 'message-container
     if (!container) return;
     const color = type === 'success' ? 'green' : 'red';
     container.innerHTML = `<p class="text-${color}-600 font-semibold">${message}</p>`;
-    setTimeout(() => { container.innerHTML = '' }, 5000); // Aumentei o tempo para 5 segundos
+    setTimeout(() => { container.innerHTML = '' }, 5000);
 }
