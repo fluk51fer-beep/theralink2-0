@@ -24,66 +24,36 @@ document.addEventListener('DOMContentLoaded', () => {
     if (currentPage === 'pagamento.html') setupPagamentoPage();
 });
 
-// --- 3. FUNÇÃO DE DIAGNÓSTICO ---
-function updateDebugPanel(key, value) {
-    const el = document.getElementById(`debug-${key}`);
-    if (el) {
-        const formattedKey = key.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-        el.innerHTML = `<span style="color: #a0aec0;">${formattedKey}:</span> ${JSON.stringify(value)}`;
-    }
-}
+// --- 3. FUNÇÕES DE AUTENTICAÇÃO ---
 
 async function checkAuthAndSubscription() {
-    updateDebugPanel('user', 'Buscando...');
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-
-    if (userError || !user) {
-        updateDebugPanel('user', `Erro ou não encontrado: ${userError?.message || 'No user'}`);
-        updateDebugPanel('decision', 'Redirecionando para Login');
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
         if (window.location.pathname.indexOf('login.html') === -1) window.location.replace('login.html');
         return;
     }
-    updateDebugPanel('user', user.id);
 
     let profile = null;
-    let profileError = null;
-
-    for (let i = 1; i <= 3; i++) {
-        updateDebugPanel('profile', `Tentativa ${i}...`);
-        const { data, error } = await supabase.from('profiles').select('subscription_status, subscription_ends_at').eq('id', user.id).single();
+    for (let i = 0; i < 3; i++) { // Tenta 3 vezes
+        const { data } = await supabase.from('profiles').select('subscription_status, subscription_ends_at').eq('id', user.id).single();
         if (data) {
             profile = data;
-            profileError = null;
             break;
         }
-        profileError = error;
-        if (i < 3) {
-            await new Promise(resolve => setTimeout(resolve, 500)); // Espera antes de tentar de novo
-        }
+        await new Promise(resolve => setTimeout(resolve, 400)); // Espera um pouco
     }
 
-    if (profileError || !profile) {
-        updateDebugPanel('profile', `Erro ou não encontrado após 3 tentativas: ${profileError?.message || 'No profile'}`);
-        updateDebugPanel('decision', 'Acesso bloqueado. Redirecionando para Pagamento.');
+    if (!profile) {
         if (window.location.pathname.indexOf('pagamento.html') === -1) window.location.replace('pagamento.html');
         return;
     }
     
-    updateDebugPanel('profile', 'Perfil Encontrado!');
-    updateDebugPanel('status', profile.subscription_status);
-    updateDebugPanel('trial-end', profile.subscription_ends_at);
-
     const isActive = profile.subscription_status === 'active';
     const isOnTrial = profile.subscription_status === 'trialing';
     const trialEndDate = profile.subscription_ends_at ? new Date(profile.subscription_ends_at) : new Date(0);
     const now = new Date();
-    
-    updateDebugPanel('now', now.toISOString());
 
-    if (isActive || (isOnTrial && now < trialEndDate)) {
-        updateDebugPanel('decision', 'Acesso PERMITIDO.');
-    } else {
-        updateDebugPanel('decision', `Acesso NEGADO. Redirecionando... (isActive: ${isActive}, isOnTrial: ${isOnTrial}, trialHasExpired: ${now >= trialEndDate})`);
+    if (!isActive && !(isOnTrial && now < trialEndDate)) {
         if (window.location.pathname.indexOf('pagamento.html') === -1) window.location.replace('pagamento.html');
     }
 }
